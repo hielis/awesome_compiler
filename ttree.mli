@@ -65,4 +65,6 @@ type file = {
   funs: decl_fun list;
 }
 
-
+type local_context = {
+    vars: (ident, typ) Hashtbl.t
+}

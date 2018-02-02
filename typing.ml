@@ -22,18 +22,34 @@ let string_of_type = function
   | Tvoidstar  -> "void*"
   | Ttypenull  -> "typenull";;
 
+let typ_context_opt context v = Hashtbl.find_opt context.vars v;;
+let typ_context context v = match typ_context_opt context v with
+  |None -> raise Error( (error_message ("Variable" ^ v.id ^ " is undefined") v.id_loc))
+  |Some(a) -> a
+;;
+let define_var context (t, i) = match (typ_context_opt context i.id) with
+  |Some(_) -> raise Error(error_message ("Attempt to redefine variable " ^ i.id) i.id_loc)
+  |None -> Hashtbl.add context.vars i.id t
+;;
+let create_local_context = function
+  |None -> {vars : Hashtbl.create 64}
+  |Some(c) -> Hashtbl.copy c
+;;
+
+
+
 let program p =
   let function_table = Hashtbl.create 64 in (* An hashtable with all the functions ids as keys binded to (typ list * typ) à savoir les types des arguments et le type de retour *)
 
   let struct_table = Hashtbl.create 64 in (*An hashtable matching the structs id with their structures *)
 
 
-  let rec type_expr exp = match exp.expr_node with
+  let rec type_expr (context : local_context) exp = match exp.expr_node with
     |Econst(a) when (Int32.to_int a = 0)-> {expr_node : Econst(a); expr_typ : Ttypenull}
     |Econst(a)-> {expr_node : Econst(a);
                   expr_typ : Tint}
     |Eunop(b, e) ->
-      let ep = type_expr e in
+      let ep = type_expr context e in
       (match b, ep.expr_typ with
        |Unot, _ -> {expr_node : Eunop(Unot, ep);
                     expr_typ : Tint}
@@ -42,7 +58,7 @@ let program p =
        |_, _ -> raise Error(error_message "This Unary operator was called by an idiot, you suck" e.expr_loc)
 
        |Ebinop(b, e1, e2) ->
-      let e1p = type_expr e1 and e2p = type_expr e2 in
+      let e1p = type_expr context e1 and e2p = type_expr context e2 in
       (match b, e1p.expr_typ, e2p.expr_typ with
        (*Operations logiques : AND OR*)
       |Band, _, _ -> {expr_node : Ebinop(Band, e1p, e2p);
@@ -60,19 +76,30 @@ let program p =
       )
        |Eright(lv) ->
          (match lv with
-          |Lident(i) -> {expr_node : Eaccess_local(i.id);
-                         expr_typ : Tvoidstar}
-          |Larrow(e, i) -> let ep = type_expr e in
+          |Lident(i) -> 
+            (*Check if i is an identifier that exists, that is if lvalue(exp) is true in local context*)
+            let t = (try typ_context context i
+                     with Error(s) -> raise Error(error_message s exp.expr_loc) in
+            {expr_node : Eaccess_local(i.id);
+             expr_typ : t}
+          |Larrow(e, i) -> failwith "Structs are not implemented yet, cannot perform this affectation"
+            let ep = type_expr context e in
             {expr_node : Eaccess_field(ep, {field_name : i.id;
                                             field_typ : ep.typ});
              expr_typ : ep.typ}
          )
        |Eassign(v, e1) ->
-         let e1p = type_expr e1 in
+         let e1p = type_expr context e1 in
          (match v with
-          |Lident(i) -> {expr_node : Eassign_local(i.id, e1p);
-                         expr_typ : e1p.expr_typ}
-          |Larrow(e2, i) -> failwith "I do not understand"
+          |Lident(i) -> 
+            (*checks if the variable has been defined, fails otherwise*)
+            let t = (try typ_context context i with Error(s) -> raise Error(error_message s exp.expr_loc)) in
+            (*checks if the declaration type matches the expression type, fails otherwise*)
+            if(eq_typ e1p.expr_typ t)
+            then ({expr_node : Eassign_local(i.id, e1p);
+                   expr_typ : e1p.expr_typ})
+            else raise Error(error_message "Type are unmatched in affectation" exp.expr_loc)
+          |Larrow(e2, i) -> failwith "Strutcs aren't implemented yet, can't assign to a field"
          )
 
        |Ecall(i, l) ->
@@ -82,7 +109,7 @@ let program p =
            |false, _, _ -> false
            |_,t0,(t1,i) -> (eq_type t0 t1)
          in
-         let lp = List.map type_expr l in
+         let lp = List.map (type_expr context)l in
          let test = (try List.fold_left2 compare lp args
                      with Invalid_argument -> raise Error(error_message "Number of Arguments do not match declaration" exp.expr_loc)) in
          if(test) then {expr_node : Ecall(i.id, lp);
@@ -93,30 +120,30 @@ let program p =
          let s = (try Hashtbl.find struct_table (i.id) with Not_found -> raise Error(error_message "The struct used is unbound" exp.expr_loc)) in
          {expr_node : Esizeof(s);
          expr_typ : Tint}
-       |_ -> failwith  "Not finished"
        in
-       let rec type_stmt st = ,match st.stmt_node with
+
+       let rec type_stmt context st = ,match st.stmt_node with
        |Sskip -> Sskip
-       |Sexpr(e) -> (try Sexpr(type_expr e) with Error(s) -> raise Error(error_message s st.stmt_loc))
+       |Sexpr(e) -> (try Sexpr(type_expr context e) with Error(s) -> raise Error(error_message s st.stmt_loc))
        |Sif(e, s1, s2) ->
-         let ep = (try type_expr e
+         let ep = (try type_expr context e
                    with Error(s) -> raise Error(error_message s st.stmt_loc))
-         and st1p = (try type_stmt s1
+         and st1p = (try type_stmt context s1
                      with Error (s) -> raise Error(error_message s st.stmt_loc))
-         and st2p = (try type_stmt s2
+         and st2p = (try type_stmt context s2
                      with Error (s) -> raise Error(error_message s st.stmt_loc)) in
          Sif(ep, st1p, st2p)
        |Swhile(e, s) ->
-           let ep = (try type_expr e
+           let ep = (try type_expr context e
                      with Error(se) -> raise Error(error_message se st.stmt_loc))
-           and stp = (try type_stmt s
+           and stp = (try type_stmt context s
                       with Error (se) -> raise Error(error_message se st.stmt_loc)) in
            Swhile(ep, stp)
-       |Sblock(b) -> (try Sblock(type_block b)
+       |Sblock(b) -> (try Sblock(type_block Some(context) b)
                       with Error(s) -> raise Error(error_message s st.stmt_loc))
-       |Sreturn(e) -> (try type_expr e 
+       |Sreturn(e) -> (try type_expr context e
                        with Error(s) -> Error(error_message s st.stmt_loc))
        in
-       let type_block (dvl, stl) = failwith "Not implemented" in
+       let type_block (b:block) context_opt = failwith "not implemented" in
        ;;
 
