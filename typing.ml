@@ -22,6 +22,9 @@ let string_of_type = function
   | Tint       -> "int"
   | Tstructp x -> "struct " ^ (x.str_name ^ " *")
 
+let convert_type = function Ptree.Tstructp(i) -> failwith "Structs are not implemented yet"
+                          |Ptree.Tint -> Ttree.Tint
+
 let typ_context_opt context (v:Ttree.ident) = Hashtbl.find_opt context.vars v;;
 
 let typ_context context v = match typ_context_opt context v.id with
@@ -30,7 +33,7 @@ let typ_context context v = match typ_context_opt context v.id with
 ;;
 let define_var context (t, i) = match (typ_context_opt context i.id) with
   |Some(_) -> raise (Error(error_message ("Attempt to redefine variable " ^ i.id) i.id_loc))
-  |None -> Hashtbl.add context.vars i.id t
+  |None -> Hashtbl.add context.vars i.id (convert_type t)
 ;;
 let create_local_context = function
   |None -> {vars = (Hashtbl.create 64)}
@@ -92,7 +95,7 @@ let program p =
        |Eassign(v, e1) ->
          let e1p = type_expr context e1 in
          (match v with
-          |Lident(i) -> 
+          |Lident(i) ->
             (*checks if the variable has been defined, fails otherwise*)
             let t = (try typ_context context i with Error(s) -> raise (Error(error_message s exp.expr_loc))) in
             (*checks if the declaration type matches the expression type, fails otherwise*)
@@ -146,8 +149,18 @@ let program p =
                       with Error(s) -> raise (Error(error_message s st.stmt_loc)))
        |Sreturn(e) -> (try Sreturn(type_expr context e)
                        with Error(s) -> raise (Error(error_message s st.stmt_loc)))
-       and type_block (context_opt:Ttree.local_context option) (b:block) = failwith "not implemented" in
 
-       "piou"
-       ;;
+
+       and type_block (context_opt:Ttree.local_context option) ((dvl, stl):Ptree.block) =
+         (*Create a context either empty or inheriting definitions from the super block*)
+         let context = create_local_context context_opt in
+         let process_one_variable = function
+           |(t, i) -> (define_var context (t, i); (*the variable is added to the context*)
+                      (convert_type t, i.id)) (*and transformed into a ttree.declvar*)
+         in
+         let process_one_instruction s = type_stmt context s in
+         (List.map process_one_variable dvl, List.map process_one_instruction stl)
+       in
+       
+      ;;
 
