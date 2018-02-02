@@ -22,8 +22,7 @@ let string_of_type = function
   | Tint       -> "int"
   | Tstructp x -> "struct " ^ (x.str_name ^ " *")
 
-let convert_type = function Ptree.Tstructp(i) -> failwith "Structs are not implemented yet"
-                          |Ptree.Tint -> Ttree.Tint
+
 
 let typ_context_opt context (v:Ttree.ident) = Hashtbl.find_opt context.vars v;;
 
@@ -47,7 +46,13 @@ let program p =
 
   let struct_table = Hashtbl.create 64 in (*An hashtable matching the structs id with their structures *)
 
+  let convert_type = function |Ptree.Tstructp(i) -> (try Ttree.Tstructp (Hashtbl.find struct_table i.id)
+                                                     with Not_found -> raise(Error(error_message "Typestruct is not defined properly" i.id_loc))
+                                                    )
+                              |Ptree.Tint -> Ttree.Tint
 
+  in
+  
   let rec type_expr (context : local_context) exp = match exp.expr_node with
     |Econst(a) when (Int32.to_int a = 0)-> {expr_node = Econst(a); expr_typ = Ttypenull}
     |Econst(a)-> {expr_node = Econst(a);
@@ -83,10 +88,11 @@ let program p =
           |Lident(i) ->
             (*Check if i is an identifier that exists, that is if lvalue(exp) is true in local context*)
             let t = (try typ_context context i
-                     with Error(s) -> raise (Error(error_message s exp.expr_loc))) in
+                     with Error(s) -> raise (Error(error_message s exp.expr_loc)))
+            in
             {expr_node = Eaccess_local(i.id);
              expr_typ = t}
-          |Larrow(e, i) -> failwith "Structs are not implemented yet, cannot perform this affectation"
+          |Larrow(e, i) -> failwith "go back here!"
         (*    let ep = type_expr context e in
             {expr_node = Eaccess_field(ep, {field_name : i.id;
                                             field_typ : ep.typ});
@@ -95,9 +101,11 @@ let program p =
        |Eassign(v, e1) ->
          let e1p = type_expr context e1 in
          (match v with
-          |Lident(i) ->
+          |Lident(i) -> 
             (*checks if the variable has been defined, fails otherwise*)
-            let t = (try typ_context context i with Error(s) -> raise (Error(error_message s exp.expr_loc))) in
+            let t = (try typ_context context i
+                     with Error(s) -> raise (Error(error_message s exp.expr_loc)))
+            in
             (*checks if the declaration type matches the expression type, fails otherwise*)
             if(eq_type e1p.expr_typ t)
             then ({expr_node = Eassign_local(i.id, e1p);
@@ -161,6 +169,52 @@ let program p =
          let process_one_instruction s = type_stmt context s in
          (List.map process_one_variable dvl, List.map process_one_instruction stl)
        in
+
+       let type_struct = function
+         |Dstruct i, dvl ->
+           ( match Hashtbl.find_opt (struct_table) (i.id) with
+             |Some _ -> raise (Error (error_message "Structure is already declared, double declaration is forbidden" i.id_loc))
+             |None   -> let t = Hashtbl.create 32 in
+                        let f_aux ty,ip =
+                          Hashtbl.add t ip.id { field_name = ip.id ;
+                                                field_type = convert_type ty }
+                        in
+                        List.iter f_aux dvl;
+                        Hashtbl.add struct_table i.id { str_name   = i.id ;
+                                                        str_fields = t }
+           )
+         |_ -> failwith "Should be some dead code"
+       in
+       let type_fun = function
+         |Dfun df -> (*args, typret *)
+           let block_context = create_local_context None
+           in
+           let f_aux (t, i) =
+             define_var block_context (t, i);
+             (convert_type t, i.id)
+           in
+           let l=List.map f_aux df.fun_formals and ty = convert_type df.fun_typ in
+           (match Hashtbl.find_opt function_table df.fun_name.id with
+            |None   -> Hashtbl.add function_table df.fun_name.id (l, ty)
+            |Some _ -> raise(Error(error_message "Function is already defined" df.fun_name.id_loc))
+           );
+           { fun_typ     = ty ;
+             fun_name    = df.fun_name.id ;
+             fun_formals = l ;
+             fun_body    = type_block (Some(block_context)) (df.fun_body) }
+         |_-> failwith "Should be some dead code"
+       in
+       let type_file f =
+         let rec f_aux acc1 acc2 = function
+           |[]             -> List.rev acc1, List.rev acc2
+           |Dfun(df)::q    -> f_aux (Dfun(df)::acc1) acc2 q
+           |Dstruct(ds)::q -> f_aux acc1 (Dstruct(ds)::acc2) q
+         in
+         let funs,structs = f_aux [] [] f in
+         List.iter type_struct structs;
+         List.map type_fun funs
+       in
+
        
       ;;
 
