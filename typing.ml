@@ -94,5 +94,29 @@ let program p =
          {expr_node : Esizeof(s);
          expr_typ : Tint}
        |_ -> failwith  "Not finished"
-       in       
+       in
+       let rec type_stmt st = ,match st.stmt_node with
+       |Sskip -> Sskip
+       |Sexpr(e) -> (try Sexpr(type_expr e) with Error(s) -> raise Error(error_message s st.stmt_loc))
+       |Sif(e, s1, s2) ->
+         let ep = (try type_expr e
+                   with Error(s) -> raise Error(error_message s st.stmt_loc))
+         and st1p = (try type_stmt s1
+                     with Error (s) -> raise Error(error_message s st.stmt_loc))
+         and st2p = (try type_stmt s2
+                     with Error (s) -> raise Error(error_message s st.stmt_loc)) in
+         Sif(ep, st1p, st2p)
+       |Swhile(e, s) ->
+           let ep = (try type_expr e
+                     with Error(se) -> raise Error(error_message se st.stmt_loc))
+           and stp = (try type_stmt s
+                      with Error (se) -> raise Error(error_message se st.stmt_loc)) in
+           Swhile(ep, stp)
+       |Sblock(b) -> (try Sblock(type_block b)
+                      with Error(s) -> raise Error(error_message s st.stmt_loc))
+       |Sreturn(e) -> (try type_expr e 
+                       with Error(s) -> Error(error_message s st.stmt_loc))
+       in
+       let type_block (dvl, stl) = failwith "Not implemented" in
        ;;
+
