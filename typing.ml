@@ -30,10 +30,7 @@ let typ_context context v = match typ_context_opt context v.id with
   |None -> raise (Error(error_message (("Variable" ^ (v.id ^ " is undefined"))) v.id_loc))
   |Some(a) -> a
 ;;
-let define_var context (t, i) = match (typ_context_opt context i.id) with
-  |Some(_) -> raise (Error(error_message ("Attempt to redefine variable " ^ i.id) i.id_loc))
-  |None -> Hashtbl.add context.vars i.id (convert_type t)
-;;
+
 let create_local_context = function
   |None -> {vars = (Hashtbl.create 64)}
   |Some(c) -> {vars = Hashtbl.copy c.vars}
@@ -52,7 +49,12 @@ let program p =
                               |Ptree.Tint -> Ttree.Tint
 
   in
-  
+
+let define_var context (t, i) = match (typ_context_opt context i.id) with
+  |Some(_) -> raise (Error(error_message ("Attempt to redefine variable " ^ i.id) i.id_loc))
+  |None -> Hashtbl.add context.vars i.id (convert_type t)
+in
+
   let rec type_expr (context : local_context) exp = match exp.expr_node with
     |Econst(a) when (Int32.to_int a = 0)-> {expr_node = Econst(a); expr_typ = Ttypenull}
     |Econst(a)-> {expr_node = Econst(a);
@@ -171,13 +173,13 @@ let program p =
        in
 
        let type_struct = function
-         |Dstruct i, dvl ->
+         |Dstruct (i, dvl) ->
            ( match Hashtbl.find_opt (struct_table) (i.id) with
              |Some _ -> raise (Error (error_message "Structure is already declared, double declaration is forbidden" i.id_loc))
              |None   -> let t = Hashtbl.create 32 in
-                        let f_aux ty,ip =
+                        let f_aux (ty,ip) =
                           Hashtbl.add t ip.id { field_name = ip.id ;
-                                                field_type = convert_type ty }
+                                                field_typ = convert_type ty }
                         in
                         List.iter f_aux dvl;
                         Hashtbl.add struct_table i.id { str_name   = i.id ;
@@ -198,7 +200,7 @@ let program p =
             |None   -> Hashtbl.add function_table df.fun_name.id (l, ty)
             |Some _ -> raise(Error(error_message "Function is already defined" df.fun_name.id_loc))
            );
-           { fun_typ     = ty ;
+           { Ttree.fun_typ     = ty ;
              fun_name    = df.fun_name.id ;
              fun_formals = l ;
              fun_body    = type_block (Some(block_context)) (df.fun_body) }
@@ -214,7 +216,6 @@ let program p =
          List.iter type_struct structs;
          List.map type_fun funs
        in
-
-       
+       try type_file p with Error s -> raise (Error ("Compiling failed : "^ s))
       ;;
 
