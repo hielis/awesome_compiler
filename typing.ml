@@ -4,7 +4,9 @@ open Ptree
 exception Error of string
 
 
-let to_string (a : loc) =  "Implement me";;
+let to_string ((a,b) : loc) =  "L : " ^ (string_of_int a.pos_lnum) ^ " C : " ^ (string_of_int a.Lexing.pos_cnum) ^ "\n";;
+
+"Implement me";;
 let error_message a l = (a ^ (to_string l));;
 
 
@@ -40,6 +42,9 @@ let create_local_context = function
 
 let program p =
   let function_table = Hashtbl.create 64 in (* An hashtable with all the functions ids as keys binded to (typ list * typ) à savoir les types des arguments et le type de retour *)
+
+  Hashtbl.add function_table "putchar" ([(Ttree.Tint, "c")], Ttree.Tint);
+  Hashtbl.add function_table "sbrk" ([(Ttree.Tint, "n")], Tvoidstar);
 
   let struct_table = Hashtbl.create 64 in (*An hashtable matching the structs id with their structures *)
 
@@ -169,7 +174,8 @@ in
                       (convert_type t, i.id)) (*and transformed into a ttree.declvar*)
          in
          let process_one_instruction s = type_stmt context s in
-         (List.map process_one_variable dvl, List.map process_one_instruction stl)
+         let l1 =  List.map process_one_variable dvl and l2 = List.map process_one_instruction stl in
+         (l1, l2)
        in
 
        let type_struct = function
@@ -195,7 +201,7 @@ in
              define_var block_context (t, i);
              (convert_type t, i.id)
            in
-           let l=List.map f_aux df.fun_formals and ty = convert_type df.fun_typ in
+           let l = List.map f_aux df.fun_formals and ty = convert_type df.fun_typ in
            (match Hashtbl.find_opt function_table df.fun_name.id with
             |None   -> Hashtbl.add function_table df.fun_name.id (l, ty)
             |Some _ -> raise(Error(error_message "Function is already defined" df.fun_name.id_loc))

@@ -5,5 +5,10 @@
 // et le lance sur ce fichier
 
 int main() {
+  if(1){
+    int i;
+    i = 13;
+  }
+
   return 0;
 }
