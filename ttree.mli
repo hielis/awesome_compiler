@@ -66,5 +66,7 @@ type file = {
 }
 
 type local_context = {
-    vars: (ident, typ) Hashtbl.t
+    vars: (ident, typ) Hashtbl.t;
+    heirs: (ident, typ) Hashtbl.t option
 }
+

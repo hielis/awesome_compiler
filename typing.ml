@@ -4,16 +4,20 @@ open Ptree
 exception Error of string
 
 
-let to_string ((a,b) : loc) =  "L : " ^ (string_of_int a.pos_lnum) ^ " C : " ^ (string_of_int a.Lexing.pos_cnum) ^ "\n";;
+let to_string ((a,b) : loc) =  " L : " ^ (string_of_int a.pos_lnum) ^ "\n";;
 
 "Implement me";;
-let error_message a l = (a ^ (to_string l));;
+let error_message a l = (a ^ (to_string l) ^ "\n");;
 
 
 let eq_type tref = function |Ttypenull -> not (tref = Tvoidstar)
                             |Tvoidstar -> not (tref = Tint || tref = Ttypenull)
                             |Tint -> (tref = Ttypenull) || (tref = Tint)
-                            |Tstructp(_) as a-> (a = tref) || (tref = Ttypenull);;
+                            |Tstructp a -> (match tref with
+                                            |Tstructp b -> (a.str_name = b.str_name)
+                                            |Ttypenull | Tvoidstar -> true
+                                            |Tint -> false)
+;;
 (*checking structure type is not safe yet*)
 
 let is_int = eq_type Tint;;
@@ -34,8 +38,11 @@ let typ_context context v = match typ_context_opt context v.id with
 ;;
 
 let create_local_context = function
-  |None -> {vars = (Hashtbl.create 64)}
-  |Some(c) -> {vars = Hashtbl.copy c.vars}
+  |None -> {vars = (Hashtbl.create 64); heirs = None}
+  |Some(c) -> let t = Hashtbl.copy c.vars in
+              let h = Hashtbl.copy c.vars in
+              {vars = t;
+               heirs = Some(h)}
 ;;
 
 
@@ -44,7 +51,7 @@ let program p =
   let function_table = Hashtbl.create 64 in (* An hashtable with all the functions ids as keys binded to (typ list * typ) à savoir les types des arguments et le type de retour *)
 
   Hashtbl.add function_table "putchar" ([(Ttree.Tint, "c")], Ttree.Tint);
-  Hashtbl.add function_table "sbrk" ([(Ttree.Tint, "n")], Tvoidstar);
+  Hashtbl.add function_table "sbrk" ([(Ttree.Tint, "n")], Ttree.Tvoidstar);
 
   let struct_table = Hashtbl.create 64 in (*An hashtable matching the structs id with their structures *)
 
@@ -56,7 +63,12 @@ let program p =
   in
 
 let define_var context (t, i) = match (typ_context_opt context i.id) with
-  |Some(_) -> raise (Error(error_message ("Attempt to redefine variable " ^ i.id) i.id_loc))
+  |Some(_) -> 
+   (match context.heirs with
+    |Some(h) ->
+      if (Hashtbl.mem h i.id) then Hashtbl.add context.vars i.id (convert_type t)
+      else raise (Error(error_message ("Attempt to redefine variable " ^ i.id) i.id_loc))
+    |None -> raise (Error(error_message ("Attempt to redefine variable " ^ i.id) i.id_loc)))
   |None -> Hashtbl.add context.vars i.id (convert_type t)
 in
 
@@ -99,12 +111,17 @@ in
             in
             {expr_node = Eaccess_local(i.id);
              expr_typ = t}
-          |Larrow(e, i) -> failwith "go back here!"
-        (*    let ep = type_expr context e in
-            {expr_node = Eaccess_field(ep, {field_name : i.id;
-                                            field_typ : ep.typ});
-             expr_typ = ep.typ}*)
-         )
+          |Larrow(ep, i) ->
+            let epp = type_expr context ep in
+            (match epp.expr_typ with
+                |Tstructp(s) -> let x = (try (Hashtbl.find s.str_fields i.id)
+                                        with Not_found -> raise (Error(error_message ("This field " ^ i.id ^" wasn't defined in struct " ^ s.str_name) exp.expr_loc)))
+                               in
+                               {expr_node = Eaccess_field(epp, x);
+                                expr_typ = x.field_typ}
+                |Ttypenull | Tvoidstar -> failwith "think about it"
+                |Tint -> raise (Error(error_message "Tried to access the field of an int" exp.expr_loc))
+               ))
        |Eassign(v, e1) ->
          let e1p = type_expr context e1 in
          (match v with
@@ -118,7 +135,17 @@ in
             then ({expr_node = Eassign_local(i.id, e1p);
                    expr_typ = e1p.expr_typ})
             else raise (Error(error_message "Type are unmatched in affectation" exp.expr_loc))
-          |Larrow(e2, i) -> failwith "Strutcs aren't implemented yet, can't assign to a field"
+          |Larrow(ep, i) ->
+            let epp = type_expr context ep in
+            (match epp.expr_typ with
+             |Tstructp(s) -> let x = (try (Hashtbl.find s.str_fields i.id)
+                                      with Not_found -> raise (Error(error_message ("This field " ^ i.id ^" wasn't defined in struct " ^ s.str_name) exp.expr_loc)))
+                             in
+                             {expr_node = Eassign_field(epp, x, e1p);
+                              expr_typ = x.field_typ}
+             |Ttypenull | Tvoidstar -> failwith "think about it"
+             |Tint -> raise (Error(error_message "Tried to access the field of an int" exp.expr_loc))
+            )
          )
 
        |Ecall(i, l) ->
@@ -134,7 +161,7 @@ in
          if(test) then {expr_node = Ecall(i.id, lp);
                         expr_typ = ret_typ}
          else raise (Error(error_message "Function was used with the wrong types" exp.expr_loc))
-
+         
        |Esizeof(i) ->
          let s = (try Hashtbl.find struct_table (i.id)
                   with Not_found -> raise (Error(error_message "The struct used is unbound" exp.expr_loc))) in
@@ -183,16 +210,20 @@ in
            ( match Hashtbl.find_opt (struct_table) (i.id) with
              |Some _ -> raise (Error (error_message "Structure is already declared, double declaration is forbidden" i.id_loc))
              |None   -> let t = Hashtbl.create 32 in
+                        Hashtbl.add struct_table i.id { str_name   = i.id ;
+                                                        str_fields = t };
+
                         let f_aux (ty,ip) =
-                          Hashtbl.add t ip.id { field_name = ip.id ;
+                          if(Hashtbl.mem t ip.id) then raise (Error(error_message "Double definition of structure" ip.id_loc))
+                          else
+                            Hashtbl.add t ip.id { field_name = ip.id ;
                                                 field_typ = convert_type ty }
                         in
                         List.iter f_aux dvl;
-                        Hashtbl.add struct_table i.id { str_name   = i.id ;
-                                                        str_fields = t }
-           )
+                                   )
          |_ -> failwith "Should be some dead code"
        in
+
        let type_fun = function
          |Dfun df -> (*args, typret *)
            let block_context = create_local_context None
@@ -222,6 +253,7 @@ in
          List.iter type_struct structs;
          List.map type_fun funs
        in
-       {funs = try type_file p with Error s -> raise (Error ("Compiling failed : "^ s))}
+       let file = {funs = try type_file p with Error s -> raise (Error ("Compiling failed : "^ s))} in
+       file
       ;;
 
