@@ -216,6 +216,6 @@ in
          List.iter type_struct structs;
          List.map type_fun funs
        in
-       try type_file p with Error s -> raise (Error ("Compiling failed : "^ s))
+       {funs = try type_file p with Error s -> raise (Error ("Compiling failed : "^ s))}
       ;;
 
