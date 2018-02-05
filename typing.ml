@@ -40,7 +40,7 @@ let typ_context context v = match typ_context_opt context v.id with
 let create_local_context = function
   |None -> {vars = (Hashtbl.create 64); heirs = None}
   |Some(c) -> let t = Hashtbl.copy c.vars in
-              let h = Hashtbl.copy c.vars in
+              let h = c.vars in
               {vars = t;
                heirs = Some(h)}
 ;;
