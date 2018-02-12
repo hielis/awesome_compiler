@@ -23,9 +23,11 @@ let deffun (df: decl_fun) =
     |Eaccess_field (e0,f) -> failwith "not implemented"
     |Eassign_local (id,e0) -> let reg = Register.fresh () in
                               let reg_v = Hashtbl.find var_tbl id in
-                              let lbl = generate(Embinop(Mmov, reg, reg_v, destl)) in
-                              let lbl_e0 = generate(expr e0 reg lbl) in
-                              Embinop(Mmov, reg, destr, lbl_e0)
+                              let lbl_access = generate(Embinop(Mmov, reg, destr, destl)) in
+                              let lbl = generate(Embinop(Mmov, reg, reg_v, lbl_access)) in
+                              (*let lbl_e0 = generate(expr e0 reg lbl) in
+                              Embinop(Mmov, reg, destr, lbl_e0)*)
+                              expr e0 reg lbl
     |Eassign_field (e1,f,e2) -> failwith "not implemented"
     |Eunop (u,e0) -> (match u with
                       |Uminus -> let reg2 = Register.fresh () in
@@ -54,11 +56,11 @@ let deffun (df: decl_fun) =
 
   let rec stmt s destl retr exitl =
     match s with
-    |Sskip -> failwith "not implemented" 
-    |Sexpr e -> failwith "not implemented"
-    |Sif (e,s1,s2) -> failwith "not implemented"
-    |Swhile (e,s0) -> failwith "not implemented"
-    |Sblock b -> failwith "not implemented"
+    |Sskip -> failwith "not implemented1" 
+    |Sexpr e -> expr e retr destl
+    |Sif (e,s1,s2) -> failwith "not implemented3"
+    |Swhile (e,s0) -> failwith "not implemented4"
+    |Sblock b -> failwith "not implemented5"
     |Sreturn e -> expr e retr exitl
   in
 
