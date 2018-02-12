@@ -3,7 +3,7 @@ open Rtltree;;
 
 let deffun (df: decl_fun) =
   let var_tbl = Hashtbl.create 32 in
-  let add_var id =
+  let add_var (t,id) =
     let r = Register.fresh () in
     Hashtbl.add var_tbl id r;
     r
@@ -18,9 +18,14 @@ let deffun (df: decl_fun) =
   let rec expr e destr destl =
     match e.expr_node with
     |Econst i -> Econst (i,destr,destl)
-    |Eaccess_local id -> failwith "not implemented"
+    |Eaccess_local id -> let reg_v = Hashtbl.find var_tbl id in
+                         Embinop(Mmov, reg_v, destr, destl)
     |Eaccess_field (e0,f) -> failwith "not implemented"
-    |Eassign_local (id,e0) -> failwith "not implemented"
+    |Eassign_local (id,e0) -> let reg = Register.fresh () in
+                              let reg_v = Hashtbl.find var_tbl id in
+                              let lbl = generate(Embinop(Mmov, reg, reg_v, destl)) in
+                              let lbl_e0 = generate(expr e0 reg lbl) in
+                              Embinop(Mmov, reg, destr, lbl_e0)
     |Eassign_field (e1,f,e2) -> failwith "not implemented"
     |Eunop (u,e0) -> (match u with
                       |Uminus -> let reg2 = Register.fresh () in
@@ -63,15 +68,20 @@ let deffun (df: decl_fun) =
     in
     List.fold_right __fold_fun stl lbl
   in
+
+  let make_dvl (dvl,stl) =
+    Register.set_of_list (List.map add_var dvl)
+  in
   let args_list = []
   and exit_reg = Register.fresh ()
   and exit_lbl = Label.fresh ()
+  and fun_loc = make_dvl (df.fun_body)
   in
   let entry_lbl = make_bdy (df.fun_body) exit_reg exit_lbl in
     { fun_name    = df.fun_name ;
       fun_formals = args_list;
       fun_result  = exit_reg ;
-      fun_locals  = Register.S.empty ;
+      fun_locals  = fun_loc ;
       fun_entry   = entry_lbl ;
       fun_exit    = exit_lbl ;
       fun_body    = !graph }
