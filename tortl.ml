@@ -1,10 +1,29 @@
 open Ttree;;
 open Rtltree;;
+let struct_tbl = Hashtbl.create 32;;
 
 let deffun (df: decl_fun) =
   let var_tbl = Hashtbl.create 32 in
+  let var_str_tbl = Hashtbl.create 32 in
   let add_var (t,id) =
     let r = Register.fresh () in
+    (match t with
+     |Tstructp(p) ->
+       let tbl = try (Hashtbl.find struct_tbl p.str_name)
+                 with Not_found ->
+                       let c = ref 0 in
+                       let field_tbl = Hashtbl.create 16 in
+                       let aux id f =
+                         Hashtbl.add field_tbl f.field_name (!c);
+                         c := !c + 1;
+                       in
+                       Hashtbl.iter (aux) p.str_fields;
+                       Hashtbl.add struct_tbl p.str_name field_tbl;
+                       field_tbl
+       in
+       ();
+     |_ -> ()
+    );
     Hashtbl.add var_tbl id r;
     r
   in
@@ -20,21 +39,36 @@ let deffun (df: decl_fun) =
     |Econst i -> generate(Econst (i,destr,destl))
     |Eaccess_local id -> let reg_v = Hashtbl.find var_tbl id in
                          generate (Embinop(Mmov, reg_v, destr, destl))
-    |Eaccess_field (e0,f) -> failwith "not implemented"
+    |Eaccess_field (e0,f) ->
+      let reg = Register.fresh() in
+      let Tstructp(s) = e0.expr_typ in
+      let field_tbl = Hashtbl.find struct_tbl s.str_name in
+      let p = Hashtbl.find field_tbl f.field_name in
+      let lbl = generate(Eload(reg, p * 8, destr, destl)) in
+      expr e0 reg lbl
     |Eassign_local (id,e0) -> let reg = Register.fresh () in
                               let reg_v = Hashtbl.find var_tbl id in
                               let lbl_access = generate(Embinop(Mmov, reg, destr, destl)) in
                               let lbl = generate(Embinop(Mmov, reg, reg_v, lbl_access)) in
-                              (*let lbl_e0 = generate(expr e0 reg lbl) in
-                              Embinop(Mmov, reg, destr, lbl_e0)*)
                               expr e0 reg lbl
-    |Eassign_field (e1,f,e2) -> failwith "not implemented"
+    |Eassign_field (e1,f,e2) ->
+      let Tstructp(s) = e1.expr_typ in
+      let field_tbl = Hashtbl.find struct_tbl s.str_name in
+      let p = Hashtbl.find field_tbl f.field_name in
+      let reg1 = Register.fresh()
+      and reg2 = Register.fresh() in
+      let lbl = generate(Embinop(Mmov, reg2, destr, destl)) in
+      let lbl1 = generate(Estore(reg2, reg1, p * 8, lbl)) in
+      let lbl2 = expr e1 reg1 lbl1 in
+      expr e2 reg2 lbl2
     |Eunop (u,e0) -> (match u with
                       |Uminus -> let reg2 = Register.fresh () in
                                  let lbl = generate (Embinop(Msub, reg2, destr, destl)) in
                                  let lbl2 = expr e0 reg2 lbl in
                                  generate (Econst(Int32.zero,destr, lbl2))
-                      |Unot -> failwith "not implemented")
+                      |Unot ->
+                         let lbl = generate (Emunop(Msetei(Int32.zero), destr, destl)) in
+                         expr e0 destr lbl)
     |Ebinop (b,e1,e2) -> let reg2 = Register.fresh () in
                          (match b with
                           |Badd -> let lbl = generate (Embinop(Madd,reg2,destr,destl)) in
@@ -67,9 +101,21 @@ let deffun (df: decl_fun) =
                           |Bge -> let lbl = generate (Embinop(Msetge,reg2,destr,destl)) in
                                    let lbl2 = expr e2 reg2 lbl in
                                    expr e1 destr lbl2
-                          |_ -> failwith "not implemented")
-    |Ecall (id,el) -> failwith "not implemented"
-    |Esizeof s -> failwith "not implemented"
+                          |_ -> failwith "not implemented PIIIOU")
+    |Ecall (id,el) ->
+      let list_aux = ref [] in
+      let args_aux e lbl =
+        let reg = Register.fresh() in
+        list_aux := reg::!list_aux;
+        expr e reg lbl
+      in
+      let lbl = generate(Ecall(destr, id, !list_aux, destl)) in
+      List.fold_right args_aux el lbl
+    |Esizeof s -> 
+      let p = ref 0 in
+      let tbl = Hashtbl.find struct_tbl s.str_name in
+      Hashtbl.iter (fun a b -> p := !p + 1;) tbl;
+      generate (Econst(Int32.of_int (!p * 8), destr, destl))
   in
 
   let rec rtlc exp lt lf =
@@ -134,7 +180,6 @@ let deffun (df: decl_fun) =
       Hashtbl.remove var_tbl id;
     in
     List.iter __aux var_list
-    
   and stmt s destl retr exitl =
     match s with
     |Sskip -> destl
