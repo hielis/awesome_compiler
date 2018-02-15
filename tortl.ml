@@ -13,12 +13,13 @@ let deffun (df: decl_fun) =
                  with Not_found ->
                        let c = ref 0 in
                        let field_tbl = Hashtbl.create 16 in
+                       Hashtbl.add struct_tbl p.str_name field_tbl;
                        let aux id f =
                          Hashtbl.add field_tbl f.field_name (!c);
                          c := !c + 1;
                        in
                        Hashtbl.iter (aux) p.str_fields;
-                       Hashtbl.add struct_tbl p.str_name field_tbl;
+
                        field_tbl
        in
        ();
@@ -101,7 +102,10 @@ let deffun (df: decl_fun) =
                           |Bge -> let lbl = generate (Embinop(Msetge,reg2,destr,destl)) in
                                    let lbl2 = expr e2 reg2 lbl in
                                    expr e1 destr lbl2
-                          |_ -> failwith "not implemented PIIIOU")
+                          |Band | Bor -> let lbl1 = generate(Econst((Int32.of_int 1), destr, destl))
+                                       and lbl0 = generate(Econst(Int32.zero, destr, destl))
+                                       in
+                                       rtlc e lbl1 lbl0)
     |Ecall (id,el) ->
       let args_aux1 e =
         Register.fresh()
@@ -117,9 +121,9 @@ let deffun (df: decl_fun) =
       let tbl = Hashtbl.find struct_tbl s.str_name in
       Hashtbl.iter (fun a b -> p := !p + 1;) tbl;
       generate (Econst(Int32.of_int (!p * 8), destr, destl))
-  in
+  and (*in
 
-  let rec rtlc exp lt lf =
+  let rec *)rtlc exp lt lf =
     match exp.expr_node with
     |Ebinop(b,e1,e2)-> (match b with
                         |Band -> rtlc e1 (rtlc e2 lt lf) lf
