@@ -103,14 +103,15 @@ let deffun (df: decl_fun) =
                                    expr e1 destr lbl2
                           |_ -> failwith "not implemented PIIIOU")
     |Ecall (id,el) ->
-      let list_aux = ref [] in
-      let args_aux e lbl =
-        let reg = Register.fresh() in
-        list_aux := reg::!list_aux;
-        expr e reg lbl
+      let args_aux1 e =
+        Register.fresh()
       in
-      let lbl = generate(Ecall(destr, id, !list_aux, destl)) in
-      List.fold_right args_aux el lbl
+      let args_aux e r lbl =
+        expr e r lbl
+      in
+      let list_aux = List.map args_aux1 el in
+      let lbl = generate(Ecall(destr, id, list_aux, destl)) in
+      List.fold_right2 args_aux el list_aux lbl
     |Esizeof s -> 
       let p = ref 0 in
       let tbl = Hashtbl.find struct_tbl s.str_name in
@@ -227,5 +228,7 @@ let deffun (df: decl_fun) =
 ;;
 
 let program (f: Ttree.file) =
-  { funs = List.map deffun f.funs };;
+
+
+  { funs = (List.map deffun ((f.funs))) };;
 
