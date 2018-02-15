@@ -7,24 +7,6 @@ let deffun (df: decl_fun) =
   let var_str_tbl = Hashtbl.create 32 in
   let add_var (t,id) =
     let r = Register.fresh () in
-    (match t with
-     |Tstructp(p) ->
-       let tbl = try (Hashtbl.find struct_tbl p.str_name)
-                 with Not_found ->
-                       let c = ref 0 in
-                       let field_tbl = Hashtbl.create 16 in
-                       Hashtbl.add struct_tbl p.str_name field_tbl;
-                       let aux id f =
-                         Hashtbl.add field_tbl f.field_name (!c);
-                         c := !c + 1;
-                       in
-                       Hashtbl.iter (aux) p.str_fields;
-
-                       field_tbl
-       in
-       ();
-     |_ -> ()
-    );
     Hashtbl.add var_tbl id r;
     r
   in
@@ -232,7 +214,16 @@ let deffun (df: decl_fun) =
 ;;
 
 let program (f: Ttree.file) =
-
-
+    let add_struct i s =
+      let c = ref 0 in
+      let field_tbl = Hashtbl.create 16 in
+      Hashtbl.add struct_tbl s.str_name field_tbl;
+      let aux id f =
+        Hashtbl.add field_tbl f.field_name (!c);
+        c := !c + 1;
+      in
+      Hashtbl.iter (aux) s.str_fields;
+  in
+  Hashtbl.iter add_struct f.structs;
   { funs = (List.map deffun ((f.funs))) };;
 

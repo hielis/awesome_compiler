@@ -2,3 +2,4 @@
 *.cmo
 *.native
 _build/*
+*.out

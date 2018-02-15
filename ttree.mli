@@ -63,6 +63,7 @@ and decl_fun = {
 
 type file = {
   funs: decl_fun list;
+  structs : (ident, structure) Hashtbl.t
 }
 
 type local_context = {
