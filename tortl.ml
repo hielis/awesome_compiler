@@ -71,7 +71,7 @@ let deffun (df: decl_fun) =
     |Ecall (id,el) -> failwith "not implemented"
     |Esizeof s -> failwith "not implemented"
   in
-  
+
   let rec rtlc exp lt lf =
     match exp.expr_node with
     |Ebinop(b,e1,e2)-> (match b with
@@ -135,8 +135,7 @@ let deffun (df: decl_fun) =
     in
     List.iter __aux var_list
     
-  and
-   stmt s destl retr exitl =
+  and stmt s destl retr exitl =
     match s with
     |Sskip -> destl
     |Sexpr e -> expr e retr destl
@@ -153,7 +152,6 @@ let deffun (df: decl_fun) =
                  remove_var vl; new_label
     |Sreturn e -> expr e retr exitl
   in
-                
 
   let make_bdy (dvl,stl) rt_reg lbl =
     let __fold_fun st l =
@@ -161,11 +159,14 @@ let deffun (df: decl_fun) =
     in
     List.fold_right __fold_fun stl lbl
   in
-  
+
   let make_dvl (dvl,stl) =
     Register.set_of_list (List.map add_var dvl)
   in
-  let args_list = []
+  let args_aux (typ, id) =
+    add_var (typ, id)
+  in
+  let args_list = List.map args_aux df.fun_formals
   and exit_reg = Register.fresh ()
   and exit_lbl = Label.fresh ()
   and fun_loc = make_dvl (df.fun_body)
@@ -182,4 +183,4 @@ let deffun (df: decl_fun) =
 
 let program (f: Ttree.file) =
   { funs = List.map deffun f.funs };;
-    
+
