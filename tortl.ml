@@ -117,13 +117,23 @@ let deffun (df: decl_fun) =
   and
 
     make_dvl_block (dvl,stl) =
-    let rec __aux = function
+    (*let rec __aux = function
       |[]->()
       |(t,id)::q-> let r = Register.fresh () in
               Hashtbl.add var_tbl id r;
               __aux q
+     in __aux dvl*)
+    let __aux (t,id) =
+      Hashtbl.add var_tbl id (Register.fresh ());
+      id
     in
-    __aux dvl
+    List.rev_map __aux dvl
+
+  and remove_var var_list =
+    let __aux id =
+      Hashtbl.remove var_tbl id;
+    in
+    List.iter __aux var_list
     
   and
    stmt s destl retr exitl =
@@ -138,7 +148,9 @@ let deffun (df: decl_fun) =
                       let lbl = rtlc e bdy_lbl destl in
                       graph := Label.M.add lbl_goto (Egoto(lbl)) !graph;
                       lbl
-    |Sblock b ->  make_dvl_block b; make_bdy_block b destl retr exitl
+    |Sblock b -> let vl = make_dvl_block b in
+                 let new_label = make_bdy_block b destl retr exitl in
+                 remove_var vl; new_label
     |Sreturn e -> expr e retr exitl
   in
                 
