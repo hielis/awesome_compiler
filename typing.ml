@@ -253,7 +253,9 @@ in
          List.iter type_struct structs;
          List.map type_fun funs
        in
-       let file = {funs = try type_file p with Error s -> raise (Error ("Compiling failed : "^ s))} in
+       let file = {funs = (try type_file p with Error s -> raise (Error ("Compiling failed : "^ s)));
+                   structs = struct_table;
+} in
        file
       ;;
 
