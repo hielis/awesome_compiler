@@ -8,6 +8,7 @@ let deffun (df: decl_fun) =
   let get_block_key () = Stream.next stream in
   let block_tbl = Hashtbl.create 32 in
   let current_keys = ref [] in
+  let set_vars = ref Register.S.empty in
 
   let var_tbl = Hashtbl.create 32 in
   let find_register id =
@@ -20,7 +21,6 @@ let deffun (df: decl_fun) =
   find_register_aux (!current_keys)
   in
 
-  let var_str_tbl = Hashtbl.create 32 in
   let add_var (t,id) =
     let r = Register.fresh () in
     Hashtbl.add var_tbl id r;
@@ -40,7 +40,10 @@ let deffun (df: decl_fun) =
                          generate (Embinop(Mmov, reg_v, destr, destl))
     |Eaccess_field (e0,f) ->
       let reg = Register.fresh() in
-      let Tstructp(s) = e0.expr_typ in
+      let s = (match e0.expr_typ with
+               |Tstructp(p) -> p
+               |_ ->failwith "Should be some dead code")
+      in
       let field_tbl = Hashtbl.find struct_tbl s.str_name in
       let p = Hashtbl.find field_tbl f.field_name in
       let lbl = generate(Eload(reg, p * 8, destr, destl)) in
@@ -51,7 +54,10 @@ let deffun (df: decl_fun) =
                               let lbl = generate(Embinop(Mmov, reg, reg_v, lbl_access)) in
                               expr e0 reg lbl
     |Eassign_field (e1,f,e2) ->
-      let Tstructp(s) = e1.expr_typ in
+      let s = (match e1.expr_typ with
+               |Tstructp(p) -> p
+               |_->failwith "Should be some dead code")
+      in
       let field_tbl = Hashtbl.find struct_tbl s.str_name in
       let p = Hashtbl.find field_tbl f.field_name in
       let reg1 = Register.fresh()
@@ -175,7 +181,9 @@ let deffun (df: decl_fun) =
               __aux q
      in __aux dvl*)
     let __aux (t,id) =
-      Hashtbl.add local_vars id (Register.fresh ());
+      let reg = Register.fresh () in
+      Hashtbl.add local_vars id reg;
+      set_vars := Register.S.add reg !set_vars;
       id
     in
     List.rev_map __aux dvl
@@ -193,7 +201,7 @@ let deffun (df: decl_fun) =
                       lbl
     |Sblock b ->
       let i = get_block_key () in
-      let vl = make_dvl_block b i in
+      let _ = make_dvl_block b i in
       let mem_key = !current_keys in
       let new_label = make_bdy_block b i destl retr exitl in
       current_keys := mem_key;
@@ -209,7 +217,8 @@ let deffun (df: decl_fun) =
   in
 
   let make_dvl (dvl,stl) =
-    Register.set_of_list (List.map add_var dvl)
+    set_vars := Register.set_of_list (List.map add_var dvl);
+    !set_vars
   in
   let args_aux (typ, id) =
     add_var (typ, id)
@@ -217,13 +226,13 @@ let deffun (df: decl_fun) =
   let args_list = List.map args_aux df.fun_formals
   and exit_reg = Register.fresh ()
   and exit_lbl = Label.fresh ()
-  and fun_loc = make_dvl (df.fun_body)
+  and _ = make_dvl (df.fun_body)
   in
   let entry_lbl = make_bdy (df.fun_body) exit_reg exit_lbl in
     { fun_name    = df.fun_name ;
       fun_formals = args_list;
       fun_result  = exit_reg ;
-      fun_locals  = fun_loc ;
+      fun_locals  = !set_vars ;
       fun_entry   = entry_lbl ;
       fun_exit    = exit_lbl ;
       fun_body    = !graph }
