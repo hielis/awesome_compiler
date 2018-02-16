@@ -1,9 +1,25 @@
 open Ttree;;
 open Rtltree;;
+
 let struct_tbl = Hashtbl.create 32;;
 
 let deffun (df: decl_fun) =
+  let stream = Stream.from (fun i -> Some(i+1))  in
+  let get_block_key () = Stream.next stream in
+  let block_tbl = Hashtbl.create 32 in
+  let current_keys = ref [] in
+
   let var_tbl = Hashtbl.create 32 in
+  let find_register id =
+  let rec find_register_aux = function 
+    |[] -> Hashtbl.find var_tbl id;
+    |i::tl -> let tbl = Hashtbl.find block_tbl i in
+              (try (Hashtbl.find tbl id)
+               with Not_found -> find_register_aux tl) 
+  in
+  find_register_aux (!current_keys)
+  in
+
   let var_str_tbl = Hashtbl.create 32 in
   let add_var (t,id) =
     let r = Register.fresh () in
@@ -20,7 +36,7 @@ let deffun (df: decl_fun) =
   let rec expr e destr destl =
     match e.expr_node with
     |Econst i -> generate(Econst (i,destr,destl))
-    |Eaccess_local id -> let reg_v = Hashtbl.find var_tbl id in
+    |Eaccess_local id -> let reg_v = find_register id in
                          generate (Embinop(Mmov, reg_v, destr, destl))
     |Eaccess_field (e0,f) ->
       let reg = Register.fresh() in
@@ -30,7 +46,7 @@ let deffun (df: decl_fun) =
       let lbl = generate(Eload(reg, p * 8, destr, destl)) in
       expr e0 reg lbl
     |Eassign_local (id,e0) -> let reg = Register.fresh () in
-                              let reg_v = Hashtbl.find var_tbl id in
+                              let reg_v = find_register id in
                               let lbl_access = generate(Embinop(Mmov, reg, destr, destl)) in
                               let lbl = generate(Embinop(Mmov, reg, reg_v, lbl_access)) in
                               expr e0 reg lbl
@@ -98,7 +114,7 @@ let deffun (df: decl_fun) =
       let list_aux = List.map args_aux1 el in
       let lbl = generate(Ecall(destr, id, list_aux, destl)) in
       List.fold_right2 args_aux el list_aux lbl
-    |Esizeof s -> 
+    |Esizeof s ->
       let p = ref 0 in
       let tbl = Hashtbl.find struct_tbl s.str_name in
       Hashtbl.iter (fun a b -> p := !p + 1;) tbl;
@@ -142,14 +158,16 @@ let deffun (df: decl_fun) =
           let lbl = generate (Emubranch(Mjz, reg, lf, lt)) in
           expr exp reg lbl 
   in
-  let rec make_bdy_block (dvl, stl) lbl rt_reg exit_lbl =
+  let rec make_bdy_block (dvl, stl) key lbl rt_reg exit_lbl =
+    current_keys := key::!current_keys;
     let __fold_fun st l =
       stmt st l rt_reg exit_lbl
     in
     List.fold_right __fold_fun stl lbl
-  and
 
-    make_dvl_block (dvl,stl) =
+  and make_dvl_block (dvl,stl) key =
+    let local_vars = Hashtbl.create 32 in
+    Hashtbl.add block_tbl key local_vars;
     (*let rec __aux = function
       |[]->()
       |(t,id)::q-> let r = Register.fresh () in
@@ -157,16 +175,10 @@ let deffun (df: decl_fun) =
               __aux q
      in __aux dvl*)
     let __aux (t,id) =
-      Hashtbl.add var_tbl id (Register.fresh ());
+      Hashtbl.add local_vars id (Register.fresh ());
       id
     in
     List.rev_map __aux dvl
-
-  and remove_var var_list =
-    let __aux id =
-      Hashtbl.remove var_tbl id;
-    in
-    List.iter __aux var_list
   and stmt s destl retr exitl =
     match s with
     |Sskip -> destl
@@ -179,9 +191,13 @@ let deffun (df: decl_fun) =
                       let lbl = rtlc e bdy_lbl destl in
                       graph := Label.M.add lbl_goto (Egoto(lbl)) !graph;
                       lbl
-    |Sblock b -> let vl = make_dvl_block b in
-                 let new_label = make_bdy_block b destl retr exitl in
-                 remove_var vl; new_label
+    |Sblock b ->
+      let i = get_block_key () in
+      let vl = make_dvl_block b i in
+      let mem_key = !current_keys in
+      let new_label = make_bdy_block b i destl retr exitl in
+      current_keys := mem_key;
+      new_label
     |Sreturn e -> expr e retr exitl
   in
 
