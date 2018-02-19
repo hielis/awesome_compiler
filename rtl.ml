@@ -11,6 +11,12 @@ let deffun (df: decl_fun) =
   let current_keys = ref [] in
   let set_vars = ref Register.S.empty in
 
+  let new_register () =
+    let r = Register.fresh () in
+    set_vars:=Register.S.add r !set_vars;
+    r
+  in
+
   let var_tbl = Hashtbl.create 32 in
   let find_register id =
   let rec find_register_aux = function 
@@ -23,9 +29,7 @@ let deffun (df: decl_fun) =
   in
 
   let add_var (t,id) =
-    let r = Register.fresh () in
-    Hashtbl.add var_tbl id r;
-    r
+    Hashtbl.add var_tbl id (new_register ())
   in
   let graph = ref Label.M.empty in
   let generate i =
@@ -40,7 +44,7 @@ let deffun (df: decl_fun) =
     |Eaccess_local id -> let reg_v = find_register id in
                          generate (Embinop(Mmov, reg_v, destr, destl))
     |Eaccess_field (e0,f) ->
-      let reg = Register.fresh() in
+      let reg = new_register () in
       let s = (match e0.expr_typ with
                |Tstructp(p) -> p
                |_ ->failwith "Should be some dead code")
@@ -49,33 +53,31 @@ let deffun (df: decl_fun) =
       let p = Hashtbl.find field_tbl f.field_name in
       let lbl = generate(Eload(reg, p * 8, destr, destl)) in
       expr e0 reg lbl
-    |Eassign_local (id,e0) -> let reg = Register.fresh () in
+    |Eassign_local (id,e0) -> let reg = new_register () in
                               let reg_v = find_register id in
                               let lbl_access = generate(Embinop(Mmov, reg, destr, destl)) in
                               let lbl = generate(Embinop(Mmov, reg, reg_v, lbl_access)) in
                               expr e0 reg lbl
-    |Eassign_field (e1,f,e2) ->
-      let s = (match e1.expr_typ with
-               |Tstructp(p) -> p
-               |_->failwith "Should be some dead code")
-      in
-      let field_tbl = Hashtbl.find struct_tbl s.str_name in
-      let p = Hashtbl.find field_tbl f.field_name in
-      let reg1 = Register.fresh()
-      and reg2 = Register.fresh() in
-      let lbl = generate(Embinop(Mmov, reg2, destr, destl)) in
-      let lbl1 = generate(Estore(reg2, reg1, p * 8, lbl)) in
-      let lbl2 = expr e1 reg1 lbl1 in
-      expr e2 reg2 lbl2
+    |Eassign_field (e1,f,e2) -> let s = (match e1.expr_typ with
+                                         |Tstructp(p) -> p
+                                         |_->failwith "Should be some dead code")
+                                in
+                                let field_tbl = Hashtbl.find struct_tbl s.str_name in
+                                let p = Hashtbl.find field_tbl f.field_name in
+                                let reg1 = new_register () in
+                                let reg2 = new_register () in
+                                let lbl = generate(Embinop(Mmov, reg2, destr, destl)) in
+                                let lbl1 = generate(Estore(reg2, reg1, p * 8, lbl)) in
+                                let lbl2 = expr e1 reg1 lbl1 in
+                                expr e2 reg2 lbl2
     |Eunop (u,e0) -> (match u with
-                      |Uminus -> let reg2 = Register.fresh () in
-                                 let lbl = generate (Embinop(Msub, reg2, destr, destl)) in
-                                 let lbl2 = expr e0 reg2 lbl in
+                      |Uminus -> let reg = new_register () in
+                                 let lbl = generate (Embinop(Msub, reg, destr, destl)) in
+                                 let lbl2 = expr e0 reg lbl in
                                  generate (Econst(Int32.zero,destr, lbl2))
-                      |Unot ->
-                         let lbl = generate (Emunop(Msetei(Int32.zero), destr, destl)) in
-                         expr e0 destr lbl)
-    |Ebinop (b,e1,e2) -> let reg2 = Register.fresh () in
+                      |Unot ->   let lbl = generate (Emunop(Msetei(Int32.zero), destr, destl)) in
+                                 expr e0 destr lbl)
+    |Ebinop (b,e1,e2) -> let reg2 = new_register () in
                          (match b with
                           |Badd -> let lbl = generate (Embinop(Madd,reg2,destr,destl)) in
                                    let lbl2 = expr e2 reg2 lbl in
@@ -111,16 +113,21 @@ let deffun (df: decl_fun) =
                                        and lbl0 = generate(Econst(Int32.zero, destr, destl))
                                        in
                                        rtlc e lbl1 lbl0)
-    |Ecall (id,el) ->
-      let args_aux1 e =
-        Register.fresh()
-      in
-      let args_aux e r lbl =
-        expr e r lbl
-      in
-      let list_aux = List.map args_aux1 el in
-      let lbl = generate(Ecall(destr, id, list_aux, destl)) in
-      List.fold_right2 args_aux el list_aux lbl
+    |Ecall (id,el) -> let args_to_regs list_args =
+                        let rec __aux acc = function
+                          |[]   -> acc
+                          |t::q -> __aux ((new_register ())::acc) q
+                        in
+                        __aux [] list_args
+                      in
+                      (*let eval_args e r lbl =*)
+                      let eval_args lbl e r =
+                        expr e r lbl
+                      in
+                      let list_regs = args_to_regs el in
+                      let lbl = generate(Ecall(destr, id, list_regs, destl)) in
+                      (*List.fold_right2 eval_args el list_regs lbl*)
+                      List.fold_left2 eval_args lbl el list_regs
     |Esizeof s ->
       let p = ref 0 in
       let tbl = Hashtbl.find struct_tbl s.str_name in
@@ -133,44 +140,44 @@ let deffun (df: decl_fun) =
     |Ebinop(b,e1,e2)-> (match b with
                         |Band -> rtlc e1 (rtlc e2 lt lf) lf
                         |Bor -> rtlc e1 lt (rtlc e2 lt lf)
-                        |Ble -> let reg1 = Register.fresh () in
-                                let reg2 = Register.fresh () in
+                        |Ble -> let reg1 = new_register () in
+                                let reg2 = new_register () in
                                 let lbl = generate (Embbranch(Mjle, reg2, reg1, lt, lf)) in
                                 let lbl2 = expr e2 reg2 lbl in
                                 expr e1 reg1 lbl2
-                        |Blt -> let reg1 = Register.fresh () in
-                                let reg2 = Register.fresh () in
+                        |Blt -> let reg1 = new_register () in
+                                let reg2 = new_register () in
                                 let lbl = generate (Embbranch(Mjl, reg2, reg1, lt, lf)) in
                                 let lbl2 = expr e2 reg2 lbl in
                                 expr e1 reg1 lbl2
-                        |Bge -> let reg1 = Register.fresh () in
-                                let reg2 = Register.fresh () in
+                        |Bge -> let reg1 = new_register () in
+                                let reg2 = new_register () in
                                 let lbl = generate (Embbranch(Mjl, reg2, reg1, lf, lt)) in
                                 let lbl2 = expr e2 reg2 lbl in
                                 expr e1 reg1 lbl2
-                        |Bgt -> let reg1 = Register.fresh () in
-                                let reg2 = Register.fresh () in
+                        |Bgt -> let reg1 = new_register () in
+                                let reg2 = new_register () in
                                 let lbl = generate (Embbranch(Mjle, reg2, reg1, lf, lt)) in
                                 let lbl2 = expr e2 reg2 lbl in
                                 expr e1 reg1 lbl2
-                        |_ -> let reg = Register.fresh () in
+                        |_ -> let reg = new_register () in
                               let lbl = generate (Emubranch(Mjz, reg, lf, lt)) in
                               expr exp reg lbl )
     |Eunop(u,e0)-> (match u with
                     |Unot-> rtlc e0 lf lt
-                    |_-> let reg = Register.fresh () in
+                    |_-> let reg = new_register () in
                          let lbl = generate (Emubranch(Mjz, reg, lf, lt)) in
                          expr exp reg lbl )
-    |_ -> let reg = Register.fresh () in
+    |_ -> let reg = new_register () in
           let lbl = generate (Emubranch(Mjz, reg, lf, lt)) in
           expr exp reg lbl 
   in
   let rec make_bdy_block (dvl, stl) key lbl rt_reg exit_lbl =
     current_keys := key::!current_keys;
-    let __fold_fun st l =
+    let __fold_fun l st =
       stmt st l rt_reg exit_lbl
     in
-    List.fold_right __fold_fun stl lbl
+    List.fold_left __fold_fun lbl (List.rev stl)
 
   and make_dvl_block (dvl,stl) key =
     let local_vars = Hashtbl.create 32 in
@@ -182,9 +189,8 @@ let deffun (df: decl_fun) =
               __aux q
      in __aux dvl*)
     let __aux (t,id) =
-      let reg = Register.fresh () in
+      let reg = new_register () in
       Hashtbl.add local_vars id reg;
-      set_vars := Register.S.add reg !set_vars;
       id
     in
     List.rev_map __aux dvl
@@ -211,24 +217,25 @@ let deffun (df: decl_fun) =
   in
 
   let make_bdy (dvl,stl) rt_reg lbl =
-    let __fold_fun st l =
+    let __fold_fun l st =
       stmt st l rt_reg lbl
     in
-    List.fold_right __fold_fun stl lbl
+    List.fold_left __fold_fun lbl (List.rev stl)
   in
 
   let make_dvl (dvl,stl) =
-    set_vars := Register.set_of_list (List.map add_var dvl);
-    !set_vars
+    List.iter add_var dvl
   in
   let args_aux (typ, id) =
-    add_var (typ, id)
+    let r = Register.fresh () in
+    Hashtbl.add var_tbl id r;
+    r
   in
   let args_list = List.map args_aux df.fun_formals
   and exit_reg = Register.fresh ()
   and exit_lbl = Label.fresh ()
-  and _ = make_dvl (df.fun_body)
   in
+  make_dvl (df.fun_body);
   let entry_lbl = make_bdy (df.fun_body) exit_reg exit_lbl in
     { fun_name    = df.fun_name ;
       fun_formals = args_list;
