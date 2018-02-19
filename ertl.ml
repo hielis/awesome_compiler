@@ -17,29 +17,32 @@ let deffun (df:Rtltree.deffun) =
     |Estore(r1, r2, i, l) -> Estore(r1, r2, i, l)
     |Eload(r1, i, r2, l) -> Eload(r1, i, r2, l)
     |Emunop(op, r, l) -> Emunop(op, r, l)
-    |Embinop(op, r1, r2, l) -> failwith "Not now"
+    |Embinop(op, r1, r2, l) -> failwith "Not now 1"
     |Emubranch(b, r, l1, l2) -> Emubranch(b, r, l1, l2)
     |Embbranch(b, r1, r2, l1, l2) -> Embbranch(b, r1, r2, l1, l2)
     |Egoto(l) -> Egoto(l)
-    |Ecall(r, id, rl, l) -> failwith "Not now"
+    |Ecall(r, id, rl, l) -> failwith "Not now 2"
   in
 
   let rec rewrite_from lentry = match Hashtbl.find_opt is_done lentry with
     |Some _ -> ();
     |None ->
       Hashtbl.add is_done lentry true;
-      let i = Label.M.find lentry df.fun_body in
-      add_to_graph lentry (instr i);
-      (match i with
-       |Rtltree.Econst(i, r, l) -> rewrite_from l
-       |Estore(r1, r2, i, l) -> rewrite_from l
-       |Eload(r1, i, r2, l) -> rewrite_from l
-       |Emunop(op, r, l) -> rewrite_from l
-       |Embinop(op, r1, r2, l) -> rewrite_from l
-       |Emubranch(b, r, l1, l2) -> rewrite_from l1; rewrite_from l2
-       |Embbranch(b, r1, r2, l1, l2) -> rewrite_from l1; rewrite_from l2
-       |Egoto(l) -> rewrite_from l;
-       |Ecall(r, id, rl, l) -> rewrite_from l;
+      (try (let i = Label.M.find lentry df.fun_body in
+           add_to_graph lentry (instr i);
+           (match i with
+            |Rtltree.Econst(i, r, l) -> rewrite_from l
+            |Estore(r1, r2, i, l) -> rewrite_from l
+            |Eload(r1, i, r2, l) -> rewrite_from l
+            |Emunop(op, r, l) -> rewrite_from l
+            |Embinop(op, r1, r2, l) -> rewrite_from l
+            |Emubranch(b, r, l1, l2) -> rewrite_from l1; rewrite_from l2
+            |Embbranch(b, r1, r2, l1, l2) -> rewrite_from l1; rewrite_from l2
+            |Egoto(l) -> rewrite_from l;
+            |Ecall(r, id, rl, l) -> rewrite_from l;
+           ))
+        with Not_found -> if lentry = df.fun_exit then ()
+                          else failwith "This doesnt work"
       )
   in
 

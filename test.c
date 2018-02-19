@@ -1,13 +1,10 @@
 
 int main() {
-	int j;
-	if(1)
-    {
-      int j;
-      j;
-      putchar(48);
-    } else {
-      return 1;
-    }
-  return 0;
+  
+  if(12){
+    return 42;
+  }
+  else {
+    return 32;
+  }
 }
