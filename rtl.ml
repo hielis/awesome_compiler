@@ -3,6 +3,7 @@ open Rtltree;;
 
 let struct_tbl = Hashtbl.create 32;;
 
+
 let deffun (df: decl_fun) =
   let stream = Stream.from (fun i -> Some(i+1))  in
   let get_block_key () = Stream.next stream in

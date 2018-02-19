@@ -1,6 +1,6 @@
 open Rtltree
 open Ertltree
-
+open Register
 
 
 let deffun (df:Rtltree.deffun) =
@@ -17,7 +17,13 @@ let deffun (df:Rtltree.deffun) =
     |Estore(r1, r2, i, l) -> Estore(r1, r2, i, l)
     |Eload(r1, i, r2, l) -> Eload(r1, i, r2, l)
     |Emunop(op, r, l) -> Emunop(op, r, l)
-    |Embinop(op, r1, r2, l) -> failwith "Not now 1"
+    |Embinop(Mdiv, r1, r2, l) ->
+      let l2 = Label.fresh()
+      and l3 = Label.fresh() in
+      add_to_graph l2 (Embinop(Mdiv, r1, rax, l3));
+      add_to_graph l3 (Embinop(Mmov, rax, r2, l));
+      Embinop(Mmov, r2, rax, l2)
+    |Embinop(op, r1, r2, l) -> Embinop(op, r1, r2, l)
     |Emubranch(b, r, l1, l2) -> Emubranch(b, r, l1, l2)
     |Embbranch(b, r1, r2, l1, l2) -> Embbranch(b, r1, r2, l1, l2)
     |Egoto(l) -> Egoto(l)
