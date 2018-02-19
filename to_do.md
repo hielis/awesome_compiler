@@ -1,0 +1,3 @@
+-> Selection d'instruction
+-> Passer le typing en lin'eaire
+-> Commenter proprement typing et rtl
