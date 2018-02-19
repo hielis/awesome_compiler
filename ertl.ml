@@ -4,7 +4,13 @@ open Ertltree
 
 
 let deffun (df:Rtltree.deffun) =
-  let graph = ref Label.M.empty i in
+  let graph = ref Label.M.empty in
+  let add_to_graph l i =
+    graph := Label.M.add l i !graph;
+  in
+
+  let is_done = Hashtbl.create 32 in
+
   let instr = function
     |Rtltree.Econst(i, r, l) ->
       Ertltree.Econst(i, r, l)
@@ -18,19 +24,36 @@ let deffun (df:Rtltree.deffun) =
     |Ecall(r, id, rl, l) -> failwith "Not now"
   in
 
-  let return = Label.fresh() in
-  graph := Label.M.add return (Ereturn(df.fun_exit)) !graph;
+  let rec rewrite_from lentry = match Hashtbl.find_opt is_done lentry with
+    |Some _ -> ();
+    |None ->
+      Hashtbl.add is_done lentry true;
+      let i = Label.M.find lentry df.fun_body in
+      add_to_graph lentry (instr i);
+      (match i with
+       |Rtltree.Econst(i, r, l) -> rewrite_from l
+       |Estore(r1, r2, i, l) -> rewrite_from l
+       |Eload(r1, i, r2, l) -> rewrite_from l
+       |Emunop(op, r, l) -> rewrite_from l
+       |Embinop(op, r1, r2, l) -> rewrite_from l
+       |Emubranch(b, r, l1, l2) -> rewrite_from l1; rewrite_from l2
+       |Embbranch(b, r1, r2, l1, l2) -> rewrite_from l1; rewrite_from l2
+       |Egoto(l) -> rewrite_from l;
+       |Ecall(r, id, rl, l) -> rewrite_from l;
+      )
+  in
+
+  graph := Label.M.add df.fun_exit (Ereturn) !graph;
+  rewrite_from df.fun_entry;
   {
     fun_name   = df.fun_name;
-    fun_formals = df.fun_formals;
-    fun_result = df.fun_result;
+    fun_formals = List.length (df.fun_formals);
     fun_locals = Register.S.empty;
     fun_entry  = df.fun_entry;
-    fun_exit   = return;
     fun_body   = !graph;
   }
 ;;
 
 
-let program (p:Rtltree.program) =
-  {funs = List.map deffuns p.funs}
+let program (p:Rtltree.file) =
+  {funs = List.map deffun p.funs}

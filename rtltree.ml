@@ -1,4 +1,3 @@
-
 (** {2 Register Transfer Language} *)
 
 open Ops
