@@ -221,8 +221,8 @@ and sel_i_stmt = function
   | Sif(e, s1, s2) ->
      let ep = sel_i e in
      (match ep.expr_node with
-      |Econst(t) when t = Int32.one -> sel_i_stmt s2
-      |Econst(t) when t = Int32.zero -> sel_i_stmt s1
+      |Econst(t) when t = Int32.one -> sel_i_stmt s1
+      |Econst(t) when t = Int32.zero -> sel_i_stmt s2
       |_ -> Sif(ep, s1, s2)
      )
   | Swhile(e, s) -> Swhile(sel_i e, s)
@@ -433,7 +433,7 @@ let deffun (df: decl_fun) =
     in
     List.rev_map __aux dvl
   and stmt s destl retr exitl =
-    match (s) with
+    match (sel_i_stmt s) with
     |Sskip -> destl
     |Sexpr e -> expr e retr destl
     |Sif (e,s1,s2) -> let tr_lbl = stmt s1 destl retr exitl
