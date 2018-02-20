@@ -10,7 +10,7 @@ let mk_not (e:Ttree.expr) = match e.expr_node with
                                              expr_typ = Tint}
   |Econst(n) -> {expr_node = Ttree.Econst(Int32.zero);
                  expr_typ = Tint}
-  |_ -> e
+  |_ -> {expr_node = Eunop(Unot, e) ; expr_typ = Tint}
 
 and mk_minus e = match e.expr_node with
   |Ttree.Econst(n) when (n = Int32.zero) -> {expr_node = Ttree.Econst(Int32.zero);
@@ -18,12 +18,12 @@ and mk_minus e = match e.expr_node with
   |Econst(n) -> {expr_node = Econst(Int32.mul Int32.minus_one n);
                  expr_typ = Tint}
 
-  |_ -> e
+  |_ ->  {expr_node = Eunop(Uminus, e) ; expr_typ = Tint}
 ;;
 
 let mk_add e1 e2 = match e1.expr_node, e2.expr_node with
-  |Ttree.Econst(t), _ when t=Int32.zero -> e1
-  |_, Ttree.Econst(t) when t=Int32.zero -> e2
+  |Ttree.Econst(t), _ when t=Int32.zero -> e2
+  |_, Ttree.Econst(t) when t=Int32.zero -> e1
   |Econst(n1), Econst(n2) -> {expr_node = Ttree.Econst(Int32.add n1 n2);
                               expr_typ = Tint}
   |_, _ -> {expr_node = Ttree.Ebinop(Badd, e1, e2);
@@ -158,16 +158,22 @@ and mk_gt e1 e2 = match e1.expr_node, e2.expr_node with
   |_, _ -> {expr_node = Ebinop(Bgt, e1, e2); expr_typ = Tint}
 
 and mk_and e1 e2 = match e1.expr_node, e2.expr_node with 
-  |Econst(t), _ when t=Int32.zero-> {expr_node = Econst(Int32.zero); 
-                                     expr_typ = Tint}
-  |Econst(_), Econst(n) when n != Int32.zero -> {expr_node = Econst(Int32.zero);  expr_typ = Tint}
-  |_, Econst(n) when n != Int32.zero -> e1
-  |Econst(_),_ -> e2
-  |_, _ -> {expr_node = Ebinop(Band, e1, e2); expr_typ = Tint}
+  |Econst(t), _ when t = Int32.zero -> {expr_node = Econst(Int32.zero); 
+                                        expr_typ = Tint}
+  |Econst(_), Econst(r) when r = Int32.zero -> {expr_node = Econst(Int32.zero); 
+                                                expr_typ = Tint}
+  |Econst(_), Econst(_) -> {expr_node = Econst(Int32.one); 
+                                        expr_typ = Tint}
+  |_,_ -> {expr_node = Ebinop(Band, e1, e2); expr_typ = Tint}
+
+
+
 and mk_or e1 e2 = match e1.expr_node, e2.expr_node with 
-  |_, Econst(t) when t=Int32.zero -> e1
-  |Econst(t), _ when t=Int32.zero -> e2
-  |Econst(_), _ -> {expr_node = Econst(Int32.one);  expr_typ = Tint}
+  |Econst(r), Econst(t) when (r != Int32.zero) || (t != Int32.zero)-> {expr_node = Econst(Int32.one);
+                                                                   expr_typ = Tint}
+  |Econst(t), Econst(r) when (t=Int32.zero && r = Int32.zero) ->  {expr_node = Econst(Int32.zero); 
+                                        expr_typ = Tint}
+  |Econst(r), _ when r != Int32.zero -> {expr_node = Econst(Int32.one);  expr_typ = Tint}
   |_, _ -> {expr_node = Ebinop(Bor, e1, e2); expr_typ = Tint}
 ;;
 
@@ -245,7 +251,7 @@ let deffun (df: decl_fun) =
 
   let rec expr e destr destl =
     let esp = (sel_i e) in
-    match e.expr_node with
+    match esp.expr_node with
     |Ttree.Econst i -> generate(Econst(i,destr,destl))
     |Eaccess_local id -> let reg_v = find_register id in
                          generate (Embinop(Mmov, reg_v, destr, destl))
@@ -319,7 +325,7 @@ let deffun (df: decl_fun) =
                                let reg2 = Register.fresh () in
                                let lbl = generate (Emunop(Maddi(Int32.mul Int32.minus_one n), destr, destl)) in
                                expr e1 destr lbl
-                             |_, _->let lbl = generate (Embinop(Madd,reg2,destr,destl)) in
+                             |_, _->let lbl = generate (Embinop(Msub,reg2,destr,destl)) in
                                     let lbl2 = expr e2 reg2 lbl in
                                     expr e1 destr lbl2)
                           |Bmul -> let lbl = generate (Embinop(Mmul,reg2,destr,destl)) in
