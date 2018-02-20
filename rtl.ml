@@ -11,10 +11,12 @@ let deffun (df: decl_fun) =
   let current_keys = ref [] in
   let set_vars = ref Register.S.empty in
 
-  let new_register () =
+  let store_new_register () =
     let r = Register.fresh () in
     set_vars:=Register.S.add r !set_vars;
     r
+  in
+  let new_register () = Register.fresh ()
   in
 
   let var_tbl = Hashtbl.create 32 in
@@ -29,7 +31,7 @@ let deffun (df: decl_fun) =
   in
 
   let add_var (t,id) =
-    Hashtbl.add var_tbl id (new_register ())
+    Hashtbl.add var_tbl id (store_new_register ())
   in
   let graph = ref Label.M.empty in
   let generate i =
@@ -188,7 +190,7 @@ let deffun (df: decl_fun) =
               __aux q
      in __aux dvl*)
     let __aux (t,id) =
-      let reg = new_register () in
+      let reg = store_new_register () in
       Hashtbl.add local_vars id reg;
       id
     in

@@ -5,6 +5,7 @@ open Register
 
 let deffun (df:Rtltree.deffun) =
   let graph = ref Label.M.empty in
+  let locals_reg = ref df.fun_locals in
   let add_to_graph l i =
     graph := Label.M.add l i !graph;
   in
@@ -130,20 +131,33 @@ let deffun (df:Rtltree.deffun) =
   (match (__load_from_stack 16 lbl2 lf) with
    |t::[]->()
    |_-> failwith "dead code3");
+  let move_callee_registers lbl r destr =
+    let lbl2 = Label.fresh () in
+    add_to_graph lbl2 (Embinop(Mmov, r, destr, lbl));
+    lbl2
+  in
+  let generate_new_register e =
+    let r=Register.fresh() in
+    locals_reg:=Register.S.add r !locals_reg;
+    r
+  in
+  let local_callee_reg = List.rev_map generate_new_register Register.callee_saved in
+  let rev_callee = List.rev Register.callee_saved in
+  let lbl_fold = List.fold_left2 move_callee_registers (List.hd lbl) rev_callee local_callee_reg in
   let new_entry = Label.fresh () in
-  add_to_graph new_entry (Ealloc_frame(List.hd lbl));
+  add_to_graph new_entry (Ealloc_frame(lbl_fold));
 
   (*manips de pseudo-registre avant sortie*)
   let new_exit = Label.fresh() in
-  let local_reg = df.fun_result::(df.fun_formals) in
-  let param = rax::Register.parameters in
-  let label_list = df.fun_exit::(generate_new_labels [] local_reg) in
-  let (_,lbl4,l2) = __store_in_registers 0 (label_list) local_reg param in
+  let label_list = (generate_new_labels [(Label.fresh ())] df.fun_formals) in
+  let (_,lbl4,l2) = __store_in_registers 0 (label_list) df.fun_formals Register.parameters in
   let (_,lbl5) = __store_in_stack 0 lbl4 l2 in
   let lbl6 = (match lbl5 with
                      |t::[]->t
                      |_-> failwith "dead code2")
   in
+  let lbl_fold2 = List.fold_left2 move_callee_registers (List.hd label_list) (local_callee_reg) (rev_callee) in
+  add_to_graph df.fun_exit (Embinop(Mmov, df.fun_result, rax, lbl_fold2));
   add_to_graph lbl6 (Edelete_frame(new_exit));
   add_to_graph new_exit (Ereturn);
 
@@ -155,7 +169,7 @@ let deffun (df:Rtltree.deffun) =
   {
     fun_name   = df.fun_name;
     fun_formals = List.length (df.fun_formals);
-    fun_locals = df.fun_locals;
+    fun_locals = !locals_reg;
     fun_entry  = new_entry;
     fun_body   = !graph;
   }
