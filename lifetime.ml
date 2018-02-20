@@ -32,7 +32,7 @@ let liveness graph =
   let fill_pred key e =
     let __iter l =
       let p = Hashtbl.find life_table l in
-      p.pred<-Label.S.add l p.pred;
+      p.pred<-Label.S.add key p.pred;
       Hashtbl.replace life_table l p;
     in
     List.iter __iter e.succ
