@@ -1,7 +1,221 @@
 open Ttree;;
 open Rtltree;;
 
+
+
 let struct_tbl = Hashtbl.create 32;;
+
+let lt a b = if Int32.compare a b < 0 then {expr_node = Econst(Int32.one); expr_typ = Tint} else  {expr_node = Econst(Int32.zero); expr_typ = Tint};;
+let le a b = if Int32.compare a b <= 0 then {expr_node = Econst(Int32.one); expr_typ = Tint} else  {expr_node = Econst(Int32.zero); expr_typ = Tint};;
+
+let gt a b = if Int32.compare a b > 0 then {expr_node = Econst(Int32.one); expr_typ = Tint} else  {expr_node = Econst(Int32.zero); expr_typ = Tint};;
+let ge a b = if Int32.compare a b >= 0 then {expr_node = Econst(Int32.one); expr_typ = Tint} else  {expr_node = Econst(Int32.zero); expr_typ = Tint};;
+
+let mk_not (e:Ttree.expr) = match e.expr_node with
+  |Ttree.Econst(n) when (n = Int32.zero) -> {expr_node = Ttree.Econst(Int32.one);
+                                             expr_typ = Tint}
+  |Econst(n) -> {expr_node = Ttree.Econst(Int32.zero);
+                 expr_typ = Tint}
+  |_ -> {expr_node = Eunop(Unot, e) ; expr_typ = Tint}
+
+and mk_minus e = match e.expr_node with
+  |Ttree.Econst(n) when (n = Int32.zero) -> {expr_node = Ttree.Econst(Int32.zero);
+                                             expr_typ = Tint}
+  |Econst(n) -> {expr_node = Econst(Int32.mul Int32.minus_one n);
+                 expr_typ = Tint}
+
+  |_ ->  {expr_node = Eunop(Uminus, e) ; expr_typ = Tint}
+;;
+
+let mk_add e1 e2 = match e1.expr_node, e2.expr_node with
+  |Ttree.Econst(t), _ when t=Int32.zero -> e2
+  |_, Ttree.Econst(t) when t=Int32.zero -> e1
+  |Econst(n1), Econst(n2) -> {expr_node = Ttree.Econst(Int32.add n1 n2);
+                              expr_typ = Tint}
+  |_, _ -> {expr_node = Ttree.Ebinop(Badd, e1, e2);
+            expr_typ = Tint}
+and mk_sub e1 e2 = match e1.expr_node, e2.expr_node with
+  |_, Ttree.Econst(t) when t=Int32.zero -> e1
+  |Ttree.Econst(t), _ when t=Int32.zero -> {expr_node = Eunop(Uminus, e2);
+                                            expr_typ = Tint}
+  |Ttree.Econst(n1), Econst(n2) -> {expr_node = Ttree.Econst(Int32.sub n1 n2);
+                                    expr_typ = Tint}
+  |_, _ -> {expr_node = Ebinop(Bsub, e1, e2);
+            expr_typ = Tint}
+
+and mk_div e1 e2 = match e1.expr_node, e2.expr_node with
+  |_, Ttree.Econst(t) when t=Int32.one -> e1
+  |Ttree.Econst(n1), Ttree.Econst(n2) -> {expr_node = Ttree.Econst(Int32.div n1 n2);
+                                          expr_typ = Tint}
+  |_, _ -> {expr_node = Ebinop(Bdiv, e1, e2);
+            expr_typ = Tint}
+
+and mk_mul e1 e2 = match e1.expr_node, e2.expr_node with
+  |_, Econst(t) when t=Int32.one -> e1
+  |Econst(t), _ when t=Int32.one -> e2
+  |Econst(n1), Econst(n2) -> {expr_node = Econst(Int32.mul n1 n2);
+                              expr_typ = Tint}
+  |_, _ -> {expr_node = Ebinop(Bmul, e1, e2);
+            expr_typ = Tint}
+
+and mk_eq e1 e2 = match e1.expr_node, e2.expr_node with
+  |Ttree.Econst(n1), Econst(n2) when n1 = n2 -> {expr_node = Econst(Int32.one);
+                                                 expr_typ = Tint}
+  |Econst(n1), Econst(n2) -> {expr_node = Econst(Int32.zero); expr_typ = Tint}
+(*  |Ebinop(op, Ttree.Econst(n1), e1), Ebinop(Badd, Econst(n2), e2)
+       when ((n1 = n2) && (op = Badd || op = Bmul || op = Bsub)) ->
+    Ebinop(Beq, e1, e2)
+  |Ebinop(Badd, Econst(n1), e1), Ebinop(Badd, e2, Econst(n2))
+       when ((n1 = n2) && (op = Badd || op = Bmul)) ->
+    Ebinop(Beq, e1, e2)
+  |Ebinop(Badd, e2, Econst(n2)), Ebinop(Badd, Econst(n1), e1)
+       when ((n1 = n2) && (op = Badd || op = Bmul)) ->
+    Ebinop(Beq, e1, e2)
+  |Ebinop(Badd, e1, Econst(n1)), Ebinop(Badd, e2, Econst(n2))
+       when ((n1 = n2) && (op = Badd || op = Bmul || op = Bsub)) ->
+    Ebinop(Beq, e1, e2)*)
+  |_, _ -> {expr_node = Ebinop(Beq, e1, e2); expr_typ = Tint}
+
+and mk_neq e1 e2 = match e1.expr_node, e2.expr_node with
+  |Econst(n1), Econst(n2) when n1 = n2 -> {expr_node = Econst(Int32.zero); expr_typ = Tint}
+  |Econst(n1), Econst(n2) -> {expr_node = Econst(Int32.one); expr_typ = Tint}
+  (*|Ebinop(op, Econst(n1), e1), Ebinop(Badd, Econst(n2), e2)
+       when ((n1 = n2) && (op = Badd || op = Bmul || op = Bsub)) ->
+    Ebinop(Bneq, e1, e2)
+  |Ebinop(Badd, Econst(n1), e1), Ebinop(Badd, e2, Econst(n2))
+       when ((n1 = n2) && (op = Badd || op = Bmul)) ->
+    Ebinop(Bneq, e1, e2)
+  |Ebinop(Badd, e2, Econst(n2)), Ebinop(Badd, Econst(n1), e1)
+       when ((n1 = n2) && (op = Badd || op = Bmul)) ->
+    Ebinop(Bneq, e1, e2)
+  |Ebinop(Badd, e1, Econst(n1)), Ebinop(Badd, e2, Econst(n2))
+       when ((n1 = n2) && (op = Badd || op = Bmul || op = Bsub)) ->
+    Ebinop(Bneq, e1, e2)*)
+  |_, _ -> {expr_node = Ebinop(Bneq, e1, e2); expr_typ = Tint}
+
+and mk_lt e1 e2 = match e1.expr_node, e2.expr_node with 
+  |Econst(n1), Econst(n2) -> lt n1 n2
+  (*|Ebinop(op, Econst(n1), e1), Ebinop(Badd, Econst(n2), e2)
+       when ((n1 = n2) && (op = Badd || op = Bsub)) ->
+    Ebinop(Blt, e1, e2)
+  |Ebinop(Badd, Econst(n1), e1), Ebinop(Badd, e2, Econst(n2))
+       when ((n1 = n2) && (op = Badd)) ->
+    Ebinop(Blt, e1, e2)
+  |Ebinop(Badd, e2, Econst(n2)), Ebinop(Badd, Econst(n1), e1)
+       when ((n1 = n2) && (op = Badd)) ->
+    Ebinop(Blt, e1, e2)
+  |Ebinop(Badd, e1, Econst(n1)), Ebinop(Badd, e2, Econst(n2))
+       when ((n1 = n2) && (op = Badd || op = Bsub)) ->
+    Ebinop(Blt, e1, e2)*)
+  |_, _ -> {expr_node = Ebinop(Blt, e1, e2); expr_typ = Tint}
+
+and mk_le e1 e2 = match e1.expr_node, e2.expr_node with 
+  |Econst(n1), Econst(n2) -> le n1 n2
+  (*|Ebinop(op, Econst(n1), e1), Ebinop(Badd, Econst(n2), e2)
+       when ((n1 = n2) && (op = Badd || op = Bsub)) ->
+    Ebinop(Ble, e1, e2)
+  |Ebinop(Badd, Econst(n1), e1), Ebinop(Badd, e2, Econst(n2))
+       when ((n1 = n2) && (op = Badd)) ->
+    Ebinop(Ble, e1, e2)
+  |Ebinop(Badd, e2, Econst(n2)), Ebinop(Badd, Econst(n1), e1)
+       when ((n1 = n2) && (op = Badd)) ->
+    Ebinop(Ble, e1, e2)
+  |Ebinop(Badd, e1, Econst(n1)), Ebinop(Badd, e2, Econst(n2))
+       when ((n1 = n2) && (op = Badd || op = Bsub)) ->
+    Ebinop(Ble, e1, e2)*)
+  |_, _ -> {expr_node = Ebinop(Ble, e1, e2); expr_typ = Tint}
+
+and mk_ge e1 e2 = match e1.expr_node, e2.expr_node with 
+  |Econst(n1), Econst(n2) -> ge n1 n2
+ (* |Ebinop(op, Econst(n1), e1), Ebinop(Badd, Econst(n2), e2)
+       when ((n1 = n2) && (op = Badd || op = Bsub)) ->
+    {expr_node = Ebinop(Ble, e1, e2); expr_typ = Tint}
+  |Ebinop(Badd, Econst(n1), e1), Ebinop(Badd, e2, Econst(n2))
+       when ((n1 = n2) && (op = Badd)) ->
+    {expr_node = Ebinop(Ble, e1, e2); expr_typ = Tint}
+  |Ebinop(Badd, e2, Econst(n2)), Ebinop(Badd, Econst(n1), e1)
+       when ((n1 = n2) && (op = Badd)) ->
+    {expr_node = Ebinop(Ble, e1, e2); expr_typ = Tint}
+  |Ebinop(Badd, e1, Econst(n1)), Ebinop(Badd, e2, Econst(n2))
+       when ((n1 = n2) && (op = Badd || op = Bsub)) ->
+    {expr_node = Ebinop(Ble, e1, e2); expr_typ = Tint}*)
+  |_, _ -> {expr_node = Ebinop(Bge, e1, e2); expr_typ = Tint}
+
+and mk_gt e1 e2 = match e1.expr_node, e2.expr_node with
+  |Econst(n1), Econst(n2) -> gt n1 n2
+  (*|Ebinop(op, Econst(n1), e1), Ebinop(Badd, Econst(n2), e2)
+       when ((n1 = n2) && (op = Badd || op = Bsub)) ->
+    Ebinop(Bgt, e1, e2)
+  |Ebinop(Badd, Econst(n1), e1), Ebinop(Badd, e2, Econst(n2))
+       when ((n1 = n2) && (op = Badd)) ->
+    Ebinop(Bgt, e1, e2)
+  |Ebinop(Badd, e2, Econst(n2)), Ebinop(Badd, Econst(n1), e1)
+       when ((n1 = n2) && (op = Badd)) ->
+    Ebinop(Bgt, e1, e2)
+  |Ebinop(Badd, e1, Econst(n1)), Ebinop(Badd, e2, Econst(n2))
+       when ((n1 = n2) && (op = Badd || op = Bsub)) ->
+    Ebinop(Bgt, e1, e2)*)
+  |_, _ -> {expr_node = Ebinop(Bgt, e1, e2); expr_typ = Tint}
+
+and mk_and e1 e2 = match e1.expr_node, e2.expr_node with 
+  |Econst(t), _ when t = Int32.zero -> {expr_node = Econst(Int32.zero); 
+                                        expr_typ = Tint}
+  |Econst(_), Econst(r) when r = Int32.zero -> {expr_node = Econst(Int32.zero); 
+                                                expr_typ = Tint}
+  |Econst(_), Econst(_) -> {expr_node = Econst(Int32.one); 
+                                        expr_typ = Tint}
+  |_,_ -> {expr_node = Ebinop(Band, e1, e2); expr_typ = Tint}
+
+
+
+and mk_or e1 e2 = match e1.expr_node, e2.expr_node with 
+  |Econst(r), Econst(t) -> 
+    let n = if (Int32.logor r t) = Int32.zero then Int32.zero else Int32.one in 
+    {expr_node = Econst(n);
+     expr_typ = Tint}
+  |Econst(r), _ when r != Int32.zero -> {expr_node = Econst(Int32.one);  expr_typ = Tint}
+  |_, _ -> {expr_node = Ebinop(Bor, e1, e2); expr_typ = Tint}
+;;
+
+let rec sel_i e = match e.expr_node with
+  |Econst i -> {expr_node = Econst i;
+                expr_typ = e.expr_typ}
+  |Eaccess_local id -> {expr_node = Eaccess_local id;
+                        expr_typ = e.expr_typ}
+  |Eaccess_field (e0,f) -> {expr_node = Eaccess_field(sel_i e0, f);
+                            expr_typ = e.expr_typ}
+  |Eassign_local (id,e0) -> {expr_node = Eassign_local(id, sel_i e0);
+                             expr_typ = e.expr_typ}
+  |Eassign_field (e1,f,e2) -> {expr_node = Eassign_field(sel_i e1, f, sel_i e2);
+                               expr_typ = e.expr_typ}
+  |Eunop (u,e0) ->
+    let e = sel_i e0 in
+    (match u with
+     |Unot -> mk_not e
+     |Uminus -> mk_minus e
+    )
+  |Ebinop (b,e1,e2) ->
+    let e1p = sel_i e1
+    and e2p = sel_i e2 in
+    (match b with
+     |Badd -> mk_add (e1p) (e2p)
+     |Bsub -> mk_sub (e1p) (e2p)
+     |Bdiv -> mk_div (e1p) (e2p)
+     |Bmul -> mk_mul (e1p) (e2p)
+     |Beq -> mk_eq (e1p) (e2p)
+     |Bneq -> mk_neq (e1p) (e2p)
+     |Blt -> mk_lt e1p e2p
+     |Ble -> mk_le e1p e2p
+     |Bgt -> mk_gt e1p e2p
+     |Bge -> mk_ge e1p e2p
+     |Band -> mk_and e1p e2p
+     |Bor -> mk_or e1p e2p
+    )
+  |Ecall (id,el) -> {expr_node = Ecall(id, List.map sel_i el);
+                     expr_typ = e.expr_typ}
+  |Esizeof s -> {expr_node = Esizeof s;
+                 expr_typ = e.expr_typ}
+;;
 
 
 let deffun (df: decl_fun) =
@@ -21,7 +235,7 @@ let deffun (df: decl_fun) =
 
   let var_tbl = Hashtbl.create 32 in
   let find_register id =
-  let rec find_register_aux = function 
+  let rec find_register_aux = function
     |[] -> Hashtbl.find var_tbl id;
     |i::tl -> let tbl = Hashtbl.find block_tbl i in
               (try (Hashtbl.find tbl id)
@@ -41,8 +255,9 @@ let deffun (df: decl_fun) =
   in
 
   let rec expr e destr destl =
-    match e.expr_node with
-    |Econst i -> generate(Econst (i,destr,destl))
+    let esp = (sel_i e) in
+    match esp.expr_node with
+    |Ttree.Econst i -> generate(Econst(i,destr,destl))
     |Eaccess_local id -> let reg_v = find_register id in
                          generate (Embinop(Mmov, reg_v, destr, destl))
     |Eaccess_field (e0,f) ->
@@ -81,12 +296,27 @@ let deffun (df: decl_fun) =
                                  expr e0 destr lbl)
     |Ebinop (b,e1,e2) -> let reg2 = new_register () in
                          (match b with
-                          |Badd -> let lbl = generate (Embinop(Madd,reg2,destr,destl)) in
-                                   let lbl2 = expr e2 reg2 lbl in
-                                   expr e1 destr lbl2
-                          |Bsub -> let lbl = generate (Embinop(Msub,reg2,destr,destl)) in
-                                   let lbl2 = expr e2 reg2 lbl in
-                                   expr e1 destr lbl2
+                          |Badd -> 
+                            (match e1.expr_node, e2.expr_node with
+                             |Econst(n), _ -> 
+                               let lbl = generate (Emunop(Maddi(n), destr, destl)) in
+                               expr e2 destr lbl
+                             |_, Econst(n) -> 
+                               let lbl = generate (Emunop(Maddi(n), destr, destl)) in
+                               expr e1 destr lbl
+                             |_, _->
+                               let lbl = generate (Embinop(Madd,reg2,destr,destl)) in
+                               let lbl2 = expr e2 reg2 lbl in
+                               expr e1 destr lbl2)
+                          |Bsub ->
+                            (match e1.expr_node, e2.expr_node with
+                             |_, Econst(n) -> 
+                               let reg2 = new_register () in
+                               let lbl = generate (Emunop(Maddi(Int32.mul Int32.minus_one n), destr, destl)) in
+                               expr e1 destr lbl
+                             |_, _->let lbl = generate (Embinop(Msub,reg2,destr,destl)) in
+                                    let lbl2 = expr e2 reg2 lbl in
+                                    expr e1 destr lbl2)
                           |Bmul -> let lbl = generate (Embinop(Mmul,reg2,destr,destl)) in
                                    let lbl2 = expr e2 reg2 lbl in
                                    expr e1 destr lbl2
@@ -171,7 +401,7 @@ let deffun (df: decl_fun) =
                          expr exp reg lbl )
     |_ -> let reg = new_register () in
           let lbl = generate (Emubranch(Mjz, reg, lf, lt)) in
-          expr exp reg lbl 
+          expr exp reg lbl
   in
   let rec make_bdy_block (dvl, stl) key lbl rt_reg exit_lbl =
     current_keys := key::!current_keys;
@@ -183,12 +413,6 @@ let deffun (df: decl_fun) =
   and make_dvl_block (dvl,stl) key =
     let local_vars = Hashtbl.create 32 in
     Hashtbl.add block_tbl key local_vars;
-    (*let rec __aux = function
-      |[]->()
-      |(t,id)::q-> let r = Register.fresh () in
-              Hashtbl.add var_tbl id r;
-              __aux q
-     in __aux dvl*)
     let __aux (t,id) =
       let reg = store_new_register () in
       Hashtbl.add local_vars id reg;
