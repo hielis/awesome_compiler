@@ -5,6 +5,12 @@ open Rtltree;;
 
 let struct_tbl = Hashtbl.create 32;;
 
+let lt a b = if Int32.compare a b < 0 then {expr_node = Econst(Int32.one); expr_typ = Tint} else  {expr_node = Econst(Int32.zero); expr_typ = Tint};;
+let le a b = if Int32.compare a b <= 0 then {expr_node = Econst(Int32.one); expr_typ = Tint} else  {expr_node = Econst(Int32.zero); expr_typ = Tint};;
+
+let gt a b = if Int32.compare a b > 0 then {expr_node = Econst(Int32.one); expr_typ = Tint} else  {expr_node = Econst(Int32.zero); expr_typ = Tint};;
+let ge a b = if Int32.compare a b >= 0 then {expr_node = Econst(Int32.one); expr_typ = Tint} else  {expr_node = Econst(Int32.zero); expr_typ = Tint};;
+
 let mk_not (e:Ttree.expr) = match e.expr_node with
   |Ttree.Econst(n) when (n = Int32.zero) -> {expr_node = Ttree.Econst(Int32.one);
                                              expr_typ = Tint}
@@ -88,8 +94,7 @@ and mk_neq e1 e2 = match e1.expr_node, e2.expr_node with
   |_, _ -> {expr_node = Ebinop(Bneq, e1, e2); expr_typ = Tint}
 
 and mk_lt e1 e2 = match e1.expr_node, e2.expr_node with 
-  |Econst(n1), Econst(n2) when ((Int32.compare n1 n2) <= 0) -> {expr_node = Econst(Int32.zero); expr_typ = Tint}
-  |Econst(n1), Econst(n2) -> {expr_node = Econst(Int32.one); expr_typ = Tint}
+  |Econst(n1), Econst(n2) -> lt n1 n2
   (*|Ebinop(op, Econst(n1), e1), Ebinop(Badd, Econst(n2), e2)
        when ((n1 = n2) && (op = Badd || op = Bsub)) ->
     Ebinop(Blt, e1, e2)
@@ -105,8 +110,7 @@ and mk_lt e1 e2 = match e1.expr_node, e2.expr_node with
   |_, _ -> {expr_node = Ebinop(Blt, e1, e2); expr_typ = Tint}
 
 and mk_le e1 e2 = match e1.expr_node, e2.expr_node with 
-  |Econst(n1), Econst(n2) when ((Int32.compare n1 n2) < 0) -> {expr_node = Econst(Int32.zero); expr_typ = Tint}
-  |Econst(n1), Econst(n2) -> {expr_node = Econst(Int32.one); expr_typ = Tint}
+  |Econst(n1), Econst(n2) -> le n1 n2
   (*|Ebinop(op, Econst(n1), e1), Ebinop(Badd, Econst(n2), e2)
        when ((n1 = n2) && (op = Badd || op = Bsub)) ->
     Ebinop(Ble, e1, e2)
@@ -122,9 +126,7 @@ and mk_le e1 e2 = match e1.expr_node, e2.expr_node with
   |_, _ -> {expr_node = Ebinop(Ble, e1, e2); expr_typ = Tint}
 
 and mk_ge e1 e2 = match e1.expr_node, e2.expr_node with 
-  |Econst(n1), Econst(n2) when ((Int32.compare n1 n2) > 0) -> {expr_node = Econst(Int32.zero);
-                                                               expr_typ = Tint}
-  |Econst(n1), Econst(n2) -> {expr_node = Econst(Int32.one);  expr_typ = Tint}
+  |Econst(n1), Econst(n2) -> ge n1 n2
  (* |Ebinop(op, Econst(n1), e1), Ebinop(Badd, Econst(n2), e2)
        when ((n1 = n2) && (op = Badd || op = Bsub)) ->
     {expr_node = Ebinop(Ble, e1, e2); expr_typ = Tint}
@@ -140,9 +142,7 @@ and mk_ge e1 e2 = match e1.expr_node, e2.expr_node with
   |_, _ -> {expr_node = Ebinop(Bge, e1, e2); expr_typ = Tint}
 
 and mk_gt e1 e2 = match e1.expr_node, e2.expr_node with
-  |Econst(n1), Econst(n2) when ((Int32.compare n1 n2) >= 0) -> {expr_node = Econst(Int32.zero);  expr_typ = Tint}
-  |Econst(n1), Econst(n2) -> {expr_node = Econst(Int32.one);
-                              expr_typ = Tint}
+  |Econst(n1), Econst(n2) -> gt n1 n2
   (*|Ebinop(op, Econst(n1), e1), Ebinop(Badd, Econst(n2), e2)
        when ((n1 = n2) && (op = Badd || op = Bsub)) ->
     Ebinop(Bgt, e1, e2)
@@ -169,10 +169,10 @@ and mk_and e1 e2 = match e1.expr_node, e2.expr_node with
 
 
 and mk_or e1 e2 = match e1.expr_node, e2.expr_node with 
-  |Econst(r), Econst(t) when (r != Int32.zero) || (t != Int32.zero)-> {expr_node = Econst(Int32.one);
-                                                                   expr_typ = Tint}
-  |Econst(t), Econst(r) when (t=Int32.zero && r = Int32.zero) ->  {expr_node = Econst(Int32.zero); 
-                                        expr_typ = Tint}
+  |Econst(r), Econst(t) -> 
+    let n = if (Int32.logor r t) = Int32.zero then Int32.zero else Int32.one in 
+    {expr_node = Econst(n);
+     expr_typ = Tint}
   |Econst(r), _ when r != Int32.zero -> {expr_node = Econst(Int32.one);  expr_typ = Tint}
   |_, _ -> {expr_node = Ebinop(Bor, e1, e2); expr_typ = Tint}
 ;;
