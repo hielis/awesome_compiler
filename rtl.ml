@@ -134,7 +134,6 @@ let deffun (df: decl_fun) =
       Hashtbl.iter (fun a b -> p := !p + 1;) tbl;
       generate (Econst(Int32.of_int (!p * 8), destr, destl))
   and (*in
-
   let rec *)rtlc exp lt lf =
     match exp.expr_node with
     |Ebinop(b,e1,e2)-> (match b with
@@ -259,4 +258,3 @@ let program (f: Ttree.file) =
   in
   Hashtbl.iter add_struct f.structs;
   { funs = (List.map deffun ((f.funs))) };;
-

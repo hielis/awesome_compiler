@@ -43,7 +43,7 @@ let () =
     eprintf "file must have extension .c\n@?";
     Arg.usage options usage;
     exit 1
-  end;
+  end; 
   let debug = !debug in
   let f = open_in !ifile in
   let buf = Lexing.from_channel f in
@@ -59,6 +59,7 @@ let () =
     let p = Ertl.program p in
     if debug then Ertltree.print_file std_formatter p;
     if !interp_ertl then begin ignore (Ertlinterp.program p); exit 0 end;
+    if debug then Lifetime.print_file std_formatter p;
     (* ... *)
   with
     | Lexer.Lexical_error c ->
@@ -77,7 +78,6 @@ let () =
         eprintf "anomaly: %s\n@." (Printexc.to_string e);
         eprintf "%s@." bt;
 	exit 2
-
 
 
 
