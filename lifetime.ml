@@ -89,7 +89,7 @@ let print_graph fmt =
     in
     visit entry
   in
-  visit (fun l i -> fprintf fmt "%a: %a@ %a\n" Label.print l Ertltree.print_instr i.instr print_live_info i)
+  visit (fun l i -> fprintf fmt "%a: %a@ %a@\n" Label.print l Ertltree.print_instr i.instr print_live_info i)
 ;;
 
 let print_deffun fmt f =
