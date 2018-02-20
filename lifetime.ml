@@ -72,7 +72,7 @@ open Pp
 let print_set = Register.print_set;;
 
 let print_live_info fmt li =
-  fprintf fmt "d={%a}@ u={%a}@ i={%a}@ o={%a}"
+  fprintf fmt "d={%a} u={%a} i={%a} o={%a}"
     print_set li.defs print_set li.uses print_set li.ins print_set li.outs
 ;;
 
@@ -89,7 +89,7 @@ let print_graph fmt =
     in
     visit entry
   in
-  visit (fun l i -> fprintf fmt "%a: %a@ %a@\n" Label.print l Ertltree.print_instr i.instr print_live_info i)
+  visit (fun l i -> fprintf fmt "%a: %a %a@\n" Label.print l Ertltree.print_instr i.instr print_live_info i)
 ;;
 
 let print_deffun fmt f =
@@ -101,5 +101,5 @@ let print_deffun fmt f =
   fprintf fmt "@]@."
 
 let print_file fmt p =
-  fprintf fmt "=== ERTL + live_info  =================================================@\n";
+  fprintf fmt "=== ERTL + live_info  =======================================================@\n";
   List.iter (print_deffun fmt) p.funs

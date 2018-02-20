@@ -11,33 +11,59 @@ let deffun (df:Rtltree.deffun) =
   in
 
   let is_done = Hashtbl.create 32 in
+  
+  let manage_args_and_call lbl_ret id r l =
 
-  let rec generate_new_labels acc = function
-    |[]->acc
-    |t::q->generate_new_labels ((Label.fresh ())::acc) q
+    let __toreg_tostack =
+      let rec __aux first_arg i j accr accs = function
+        |[]->let rec __aux2 acc = function |i when i>=6-> acc | i -> __aux2 (None::acc) (i+1) in
+             (first_arg, i, __aux2 accr i, j, accs)
+        |t::q when i=0 -> __aux (Some(t)) (i+1) j accr accs q
+        |t::q when i<6->__aux first_arg (i+1) j (Some(t)::accr) accs q
+        |t::q-> __aux first_arg i (j+1) accr (t::accs) q
+      in __aux None 0 0 [] []
+    in
+
+    let __store_in_registers =
+      let __fold lbl arg reg =
+        match arg with
+        |None->lbl
+        |Some(t)-> let l = Label.fresh () in
+                   add_to_graph l (Embinop(Mmov, t, reg, lbl));
+                   l
+      in List.fold_left2 __fold
+    in
+
+    let __store_in_stack =
+      let __fold lbl arg =
+        let l = Label.fresh () in
+        add_to_graph l (Epush_param(arg, lbl));
+        l
+      in List.fold_left __fold
+    in
+
+    let __unstack_args lbldest = function
+    |0->lbldest
+    |i->let lbl = Label.fresh () in
+        add_to_graph lbl (Emunop(Maddi(Int32.of_int(8*i)), rsp, lbldest));
+        lbl
+    in
+        
+    let(first_arg, i, l1, j, l2) = __toreg_tostack l in
+    let lbl = __unstack_args lbl_ret j in
+    let lbl2 = Label.fresh() in
+    add_to_graph lbl2 (Embinop(Mmov, Register.result, r, lbl));
+    match first_arg with
+      |None->Ecall(id, i, lbl_ret)
+      |Some(arg)->(let lbl3 = Label.fresh () in
+                   add_to_graph lbl3 (Ecall(id, i, lbl2));
+                   let lbl4 = __store_in_stack lbl3 l2 in
+                   let lbl5 = __store_in_registers lbl4 l1 (List.rev (List.tl Register.parameters)) in
+                   Embinop(Mmov, arg, (List.hd Register.parameters), lbl5))
+      
+    
   in
-  let rec __store_in_registers i lbl_list larg lreg =
-    match lbl_list,larg, lreg with
-    |_,[], _ -> i,lbl_list,[]
-    |_,_, [] -> i,lbl_list,larg
-    |[],_,_ -> failwith "larg is shorter, case impossible"
-    |t::[],_,_->failwith "larg is shorter, so is []" 
-    |tl1::tl2::ql,ta::qa, tr::qr -> add_to_graph tl1 (Embinop(Mmov, ta, tr, tl2));
-                              __store_in_registers (i+1) (tl2::ql) qa qr
-  and __store_in_stack j lbl_list larg =
-    match lbl_list, larg with
-    |_,[]->j,lbl_list
-    |[],_-> failwith "same thing, already handled"
-    |t::[],_->failwith "dead code"
-    |tl1::tl2::ql,ta::qa-> add_to_graph tl1 (Epush_param(ta, tl2));
-                     __store_in_stack (j+1) (tl2::ql) qa
-  and __unstack_args lbl0 lbl1 = function
-    |0->lbl0
-    |i->add_to_graph lbl1 (Emunop(Maddi(Int32.of_int(8*i)), rsp, lbl0));
-        lbl1
-  in    
-    
-    
+  
   let instr = function
     |Rtltree.Econst(i, r, l) ->
       Ertltree.Econst(i, r, l)
@@ -54,31 +80,8 @@ let deffun (df:Rtltree.deffun) =
     |Emubranch(b, r, l1, l2) -> Emubranch(b, r, l1, l2)
     |Embbranch(b, r1, r2, l1, l2) -> Embbranch(b, r1, r2, l1, l2)
     |Egoto(l) -> Egoto(l)
-    |Ecall(r, id, rl, l) ->
-      try
-        (let reg = List.hd rl in
-         let len = (List.length rl - 6) in
-         let lbl5 = if(len > 0) then (let lr=Label.fresh ()in add_to_graph lr (Emunop(Maddi(Int32.of_int(8*len)), rsp, l)); lr) else l in
-         let lbl4 = Label.fresh () in
-         let lbl_list = generate_new_labels [] rl in
-         let (i,lbl2,l2) = __store_in_registers 1 lbl_list (List.tl rl) (List.tl (Register.parameters)) in
-      (*let lbl = Label.fresh() in
-      let(i,lbl2,l2) = __store_in_registers 0 lbl rl (Register.parameters) in*)
-         let (j,lbl_l) = __store_in_stack 0 lbl2 l2 in
-         let lbl3 = (match lbl_l with
-                     |t::[]->t
-                     |_-> failwith "dead code1")
-         in
-         add_to_graph lbl3 (Ecall(id, i, lbl4));
-         (*let lbl6 = __unstack_args l lbl5 j in*)
-         let lbl6 = lbl5 in
-         add_to_graph lbl4 (Embinop(Mmov, Register.result, r, lbl6));
-         Embinop(Mmov, reg, (List.hd (Register.parameters)), (List.hd lbl_list));)
-      with Failure _ ->
-        (let lbl = Label.fresh() in
-         add_to_graph lbl (Embinop(Mmov, Register.result, r, l));
-         Ecall(id, 0, lbl);)
-        (*  Egoto(lbl);*)
+    |Ecall(r, id, rl, l) -> manage_args_and_call l id r rl
+
   in
 
   let rec rewrite_from lentry = match Hashtbl.find_opt is_done lentry with
@@ -103,69 +106,77 @@ let deffun (df:Rtltree.deffun) =
       )
   in
 
-  (*manips de pseudo-registre avant entrée *)
-  let rec __load_from_registers lbl_list lreg ldest =
-    match lbl_list,lreg,ldest with
-    |_,[],_->lbl_list, List.rev ldest
-    |_,_,[]->lbl_list, []
-    |[],_,_->failwith "dead codeA" 
-    |t::[],_,_->failwith "likewiseA"
-    |tl1::tl2::ql,tr::qr, td::qd-> add_to_graph tl1 (Embinop(Mmov, tr, td, tl2));
-                                   __load_from_registers (tl2::ql) qr qd
-  and __load_from_stack j lbl_list ldest =
-    match lbl_list, ldest with
-    |_,[]->lbl_list
-    |[],_->failwith "dead codeB"
-    |t::[],_-> failwith "likewiseB"
-    |t1::t2::ql,t::q-> add_to_graph t1 (Eget_param(j, t, t2));
-                       __load_from_stack (j+8) (t2::ql) q
-  in
+  
+  let manage_fun_args lbl_entry lbl_ret exit_reg l =
 
-  let rec new_lbls acc = function
-    |[]->acc
-    |t::[]->acc
-    |t::q->new_lbls ((Label.fresh())::acc) q
-  in
-  let lbl = generate_new_labels [df.fun_entry] df.fun_formals in
-  let (lbl2, lf) = __load_from_registers lbl (Register.parameters) (df.fun_formals) in
-  (match (__load_from_stack 16 lbl2 lf) with
-   |t::[]->()
-   |_-> failwith "dead code3");
-  let move_callee_registers lbl r destr =
-    let lbl2 = Label.fresh () in
-    add_to_graph lbl2 (Embinop(Mmov, r, destr, lbl));
-    lbl2
-  in
-  let generate_new_register e =
+    let __fromreg_fromstack =
+      let rec __aux i j accr accs = function
+        |[]->let rec __aux2 acc = function |i when i>=6-> acc | i -> __aux2 (None::acc) (i+1) in
+             (i, __aux2 accr i, j, accs)
+        |t::q when i<6->__aux (i+1) j (Some(t)::accr) accs q
+        |t::q-> __aux i (j+1) accr (t::accs) q
+      in __aux 0 0 [] []
+    in
+
+    let __load_from_registers =
+      let __fold lbl reg = function
+        |None-> lbl
+        |Some(t)-> let l = Label.fresh () in
+                   add_to_graph l (Embinop(Mmov, reg, t, lbl));
+                   l
+      in List.fold_left2 __fold
+    in
+
+    let __load_from_stack =
+      let i = ref 16 in
+      let __fold lbl arg = 
+        let l = Label.fresh () in
+        add_to_graph l (Eget_param(!i,arg, lbl));
+        i:=8+(!i);
+        l
+      in List.fold_left __fold
+    in
+
+    let __save_callee =
+      let __fold lbl reg arg =
+        let l = Label.fresh () in
+        add_to_graph l (Embinop(Mmov, reg, arg, lbl));
+        l
+      in List.fold_left2 __fold
+    in
+    let __restore_callee =
+      __save_callee
+    in
+    let __generate_new_register e =
     let r=Register.fresh() in
     locals_reg:=Register.S.add r !locals_reg;
     r
-  in
-  let local_callee_reg = List.rev_map generate_new_register Register.callee_saved in
-  let rev_callee = List.rev Register.callee_saved in
-  let lbl_fold = List.fold_left2 move_callee_registers (List.hd lbl) rev_callee local_callee_reg in
-  let new_entry = Label.fresh () in
-  add_to_graph new_entry (Ealloc_frame(lbl_fold));
+    in
 
-  (*manips de pseudo-registre avant sortie*)
-  let new_exit = Label.fresh() in
-  let label_list = (generate_new_labels [(Label.fresh ())] df.fun_formals) in
-  let (_,lbl4,l2) = __store_in_registers 0 (label_list) df.fun_formals Register.parameters in
-  let (_,lbl5) = __store_in_stack 0 lbl4 l2 in
-  let lbl6 = (match lbl5 with
-                     |t::[]->t
-                     |_-> failwith "dead code2")
-  in
-  let lbl_fold2 = List.fold_left2 move_callee_registers (List.hd label_list) (local_callee_reg) (rev_callee) in
-  add_to_graph df.fun_exit (Embinop(Mmov, df.fun_result, rax, lbl_fold2));
-  add_to_graph lbl6 (Edelete_frame(new_exit));
-  add_to_graph new_exit (Ereturn);
+    let(i, l1, j, l2) = __fromreg_fromstack l in
+    let lbl = __load_from_stack lbl_entry l2 in
+    let param = List.rev Register.parameters in
+    let lbl2 = __load_from_registers lbl param l1 in
+    let local_reg = List.rev_map __generate_new_register Register.callee_saved in
+    let rev_callee = List.rev Register.callee_saved in
+    let lbl3 = __save_callee lbl2 rev_callee local_reg in
+    let new_entry = Label.fresh () in
+    add_to_graph new_entry (Ealloc_frame(lbl3));
 
-  
-  
+    let new_exit = Label.fresh() in
+    add_to_graph new_exit (Ereturn);
+    let lbl4 = Label.fresh() in
+    add_to_graph lbl4 (Edelete_frame(new_exit));
+    let lbl5 = __restore_callee lbl4 local_reg rev_callee in
+    add_to_graph lbl_ret (Embinop(Mmov, exit_reg, Register.rax, lbl5));
+    new_entry
+    
+  in
+
+  let new_entry = manage_fun_args df.fun_entry df.fun_exit df.fun_result df.fun_formals in
+    
   rewrite_from df.fun_entry;
 
-  
   {
     fun_name   = df.fun_name;
     fun_formals = List.length (df.fun_formals);
