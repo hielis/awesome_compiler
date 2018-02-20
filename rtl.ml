@@ -30,24 +30,26 @@ let mk_add e1 e2 = match e1.expr_node, e2.expr_node with
             expr_typ = Tint}
 and mk_sub e1 e2 = match e1.expr_node, e2.expr_node with
   |_, Ttree.Econst(t) when t=Int32.zero -> e1
+  |Ttree.Econst(t), _ when t=Int32.zero -> {expr_node = Eunop(Uminus, e2);
+                                            expr_typ = Tint}
   |Ttree.Econst(n1), Econst(n2) -> {expr_node = Ttree.Econst(Int32.sub n1 n2);
                                     expr_typ = Tint}
   |_, _ -> {expr_node = Ebinop(Bsub, e1, e2);
             expr_typ = Tint}
 
 and mk_div e1 e2 = match e1.expr_node, e2.expr_node with
-  |_, Ttree.Econst(t) when t=Int32.zero -> e1
+  |_, Ttree.Econst(t) when t=Int32.one -> e1
   |Ttree.Econst(n1), Ttree.Econst(n2) -> {expr_node = Ttree.Econst(Int32.div n1 n2);
                                           expr_typ = Tint}
-  |_, _ -> {expr_node = Ebinop(Badd, e1, e2);
+  |_, _ -> {expr_node = Ebinop(Bdiv, e1, e2);
             expr_typ = Tint}
 
 and mk_mul e1 e2 = match e1.expr_node, e2.expr_node with
-  |_, Econst(t) when t=Int32.zero -> e1
-  |Econst(t), _ when t=Int32.zero -> e2
+  |_, Econst(t) when t=Int32.one -> e1
+  |Econst(t), _ when t=Int32.one -> e2
   |Econst(n1), Econst(n2) -> {expr_node = Econst(Int32.mul n1 n2);
                               expr_typ = Tint}
-  |_, _ -> {expr_node = Ebinop(Badd, e1, e2);
+  |_, _ -> {expr_node = Ebinop(Bmul, e1, e2);
             expr_typ = Tint}
 
 and mk_eq e1 e2 = match e1.expr_node, e2.expr_node with
@@ -86,8 +88,8 @@ and mk_neq e1 e2 = match e1.expr_node, e2.expr_node with
   |_, _ -> {expr_node = Ebinop(Bneq, e1, e2); expr_typ = Tint}
 
 and mk_lt e1 e2 = match e1.expr_node, e2.expr_node with 
-  |Econst(n1), Econst(n2) when ((Int32.compare n1 n2) >= 0) -> {expr_node = Econst(Int32.one); expr_typ = Tint}
-  |Econst(n1), Econst(n2) -> {expr_node = Econst(Int32.zero); expr_typ = Tint}
+  |Econst(n1), Econst(n2) when ((Int32.compare n1 n2) <= 0) -> {expr_node = Econst(Int32.zero); expr_typ = Tint}
+  |Econst(n1), Econst(n2) -> {expr_node = Econst(Int32.one); expr_typ = Tint}
   (*|Ebinop(op, Econst(n1), e1), Ebinop(Badd, Econst(n2), e2)
        when ((n1 = n2) && (op = Badd || op = Bsub)) ->
     Ebinop(Blt, e1, e2)
@@ -103,7 +105,7 @@ and mk_lt e1 e2 = match e1.expr_node, e2.expr_node with
   |_, _ -> {expr_node = Ebinop(Blt, e1, e2); expr_typ = Tint}
 
 and mk_le e1 e2 = match e1.expr_node, e2.expr_node with 
-  |Econst(n1), Econst(n2) when ((Int32.compare n1 n2) > 0) -> {expr_node = Econst(Int32.zero); expr_typ = Tint}
+  |Econst(n1), Econst(n2) when ((Int32.compare n1 n2) < 0) -> {expr_node = Econst(Int32.zero); expr_typ = Tint}
   |Econst(n1), Econst(n2) -> {expr_node = Econst(Int32.one); expr_typ = Tint}
   (*|Ebinop(op, Econst(n1), e1), Ebinop(Badd, Econst(n2), e2)
        when ((n1 = n2) && (op = Badd || op = Bsub)) ->
@@ -120,9 +122,9 @@ and mk_le e1 e2 = match e1.expr_node, e2.expr_node with
   |_, _ -> {expr_node = Ebinop(Ble, e1, e2); expr_typ = Tint}
 
 and mk_ge e1 e2 = match e1.expr_node, e2.expr_node with 
-  |Econst(n1), Econst(n2) when ((Int32.compare n1 n2) < 0) -> {expr_node = Econst(Int32.zero);
+  |Econst(n1), Econst(n2) when ((Int32.compare n1 n2) > 0) -> {expr_node = Econst(Int32.zero);
                                                                expr_typ = Tint}
-  |Econst(n1), Econst(n2) -> {expr_node = Econst(Int32.zero);  expr_typ = Tint}
+  |Econst(n1), Econst(n2) -> {expr_node = Econst(Int32.one);  expr_typ = Tint}
  (* |Ebinop(op, Econst(n1), e1), Ebinop(Badd, Econst(n2), e2)
        when ((n1 = n2) && (op = Badd || op = Bsub)) ->
     {expr_node = Ebinop(Ble, e1, e2); expr_typ = Tint}
@@ -135,11 +137,11 @@ and mk_ge e1 e2 = match e1.expr_node, e2.expr_node with
   |Ebinop(Badd, e1, Econst(n1)), Ebinop(Badd, e2, Econst(n2))
        when ((n1 = n2) && (op = Badd || op = Bsub)) ->
     {expr_node = Ebinop(Ble, e1, e2); expr_typ = Tint}*)
-  |_, _ -> {expr_node = Ebinop(Ble, e1, e2); expr_typ = Tint}
+  |_, _ -> {expr_node = Ebinop(Bge, e1, e2); expr_typ = Tint}
 
 and mk_gt e1 e2 = match e1.expr_node, e2.expr_node with
-  |Econst(n1), Econst(n2) when ((Int32.compare n1 n2) <= 0) -> {expr_node = Econst(Int32.one);  expr_typ = Tint}
-  |Econst(n1), Econst(n2) -> {expr_node = Econst(Int32.zero);
+  |Econst(n1), Econst(n2) when ((Int32.compare n1 n2) >= 0) -> {expr_node = Econst(Int32.zero);  expr_typ = Tint}
+  |Econst(n1), Econst(n2) -> {expr_node = Econst(Int32.one);
                               expr_typ = Tint}
   (*|Ebinop(op, Econst(n1), e1), Ebinop(Badd, Econst(n2), e2)
        when ((n1 = n2) && (op = Badd || op = Bsub)) ->
@@ -158,14 +160,14 @@ and mk_gt e1 e2 = match e1.expr_node, e2.expr_node with
 and mk_and e1 e2 = match e1.expr_node, e2.expr_node with 
   |Econst(t), _ when t=Int32.zero-> {expr_node = Econst(Int32.zero); 
                                      expr_typ = Tint}
-  |Econst(_), Econst(_) -> {expr_node = Econst(Int32.zero);  expr_typ = Tint}
-  |_, Econst(_) -> e1
+  |Econst(_), Econst(n) when n != Int32.zero -> {expr_node = Econst(Int32.zero);  expr_typ = Tint}
+  |_, Econst(n) when n != Int32.zero -> e1
   |Econst(_),_ -> e2
   |_, _ -> {expr_node = Ebinop(Band, e1, e2); expr_typ = Tint}
 and mk_or e1 e2 = match e1.expr_node, e2.expr_node with 
   |_, Econst(t) when t=Int32.zero -> e1
   |Econst(t), _ when t=Int32.zero -> e2
-  |Econst(_), _ -> {expr_node = Econst(Int32.zero);  expr_typ = Tint}
+  |Econst(_), _ -> {expr_node = Econst(Int32.one);  expr_typ = Tint}
   |_, _ -> {expr_node = Ebinop(Bor, e1, e2); expr_typ = Tint}
 ;;
 
@@ -243,7 +245,7 @@ let deffun (df: decl_fun) =
 
   let rec expr e destr destl =
     let esp = (sel_i e) in
-    match esp.expr_node with
+    match e.expr_node with
     |Ttree.Econst i -> generate(Econst(i,destr,destl))
     |Eaccess_local id -> let reg_v = find_register id in
                          generate (Embinop(Mmov, reg_v, destr, destl))
@@ -302,22 +304,21 @@ let deffun (df: decl_fun) =
                           |Badd -> 
                             (match e1.expr_node, e2.expr_node with
                              |Econst(n), _ -> 
-                                   let lbl = generate (Emunop(Maddi(n), destr, destl)) in
-                                   expr e2 destr lbl
+                               let lbl = generate (Emunop(Maddi(n), destr, destl)) in
+                               expr e2 destr lbl
                              |_, Econst(n) -> 
-                                              let lbl = generate (Emunop(Maddi(n), destr, destl)) in
-                                              expr e1 destr lbl
-                             |_, _->let lbl = generate (Embinop(Madd,reg2,destr,destl)) in
-                                    let lbl2 = expr e2 reg2 lbl in
-                                    expr e1 destr lbl2)
+                               let lbl = generate (Emunop(Maddi(n), destr, destl)) in
+                               expr e1 destr lbl
+                             |_, _->
+                               let lbl = generate (Embinop(Madd,reg2,destr,destl)) in
+                               let lbl2 = expr e2 reg2 lbl in
+                               expr e1 destr lbl2)
                           |Bsub ->
                             (match e1.expr_node, e2.expr_node with
-                             |Econst(n), _ -> let reg2 = Register.fresh () in
-                                              let lbl = generate (Emunop(Maddi(Int32.mul Int32.minus_one n), destr, destl)) in
-                                              expr e2 destr lbl
-                             |_, Econst(n) -> let reg2 = Register.fresh () in
-                                              let lbl = generate (Emunop(Maddi(Int32.mul Int32.minus_one n), destr, destl)) in
-                                              expr e1 destr lbl
+                             |_, Econst(n) -> 
+                               let reg2 = Register.fresh () in
+                               let lbl = generate (Emunop(Maddi(Int32.mul Int32.minus_one n), destr, destl)) in
+                               expr e1 destr lbl
                              |_, _->let lbl = generate (Embinop(Madd,reg2,destr,destl)) in
                                     let lbl2 = expr e2 reg2 lbl in
                                     expr e1 destr lbl2)
