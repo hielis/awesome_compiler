@@ -215,6 +215,19 @@ let rec sel_i e = match e.expr_node with
                      expr_typ = e.expr_typ}
   |Esizeof s -> {expr_node = Esizeof s;
                  expr_typ = e.expr_typ}
+and sel_i_stmt = function
+  | Sskip -> Sskip
+  | Sexpr(e) -> Sexpr(sel_i e)
+  | Sif(e, s1, s2) ->
+     let ep = sel_i e in
+     (match ep.expr_node with
+      |Econst(t) when t = Int32.one -> sel_i_stmt s2
+      |Econst(t) when t = Int32.zero -> sel_i_stmt s1
+      |_ -> Sif(ep, s1, s2)
+     )
+  | Swhile(e, s) -> Swhile(sel_i e, s)
+  | Sblock(dvl, sl) -> Sblock(dvl, List.map sel_i_stmt sl)
+  | Sreturn(e) -> Sreturn(sel_i e)
 ;;
 
 
@@ -296,12 +309,12 @@ let deffun (df: decl_fun) =
                                  expr e0 destr lbl)
     |Ebinop (b,e1,e2) -> let reg2 = new_register () in
                          (match b with
-                          |Badd -> 
+                          |Badd ->
                             (match e1.expr_node, e2.expr_node with
-                             |Econst(n), _ -> 
+                             |Econst(n), _ ->
                                let lbl = generate (Emunop(Maddi(n), destr, destl)) in
                                expr e2 destr lbl
-                             |_, Econst(n) -> 
+                             |_, Econst(n) ->
                                let lbl = generate (Emunop(Maddi(n), destr, destl)) in
                                expr e1 destr lbl
                              |_, _->
@@ -310,7 +323,7 @@ let deffun (df: decl_fun) =
                                expr e1 destr lbl2)
                           |Bsub ->
                             (match e1.expr_node, e2.expr_node with
-                             |_, Econst(n) -> 
+                             |_, Econst(n) ->
                                let reg2 = new_register () in
                                let lbl = generate (Emunop(Maddi(Int32.mul Int32.minus_one n), destr, destl)) in
                                expr e1 destr lbl
@@ -420,7 +433,7 @@ let deffun (df: decl_fun) =
     in
     List.rev_map __aux dvl
   and stmt s destl retr exitl =
-    match s with
+    match (s) with
     |Sskip -> destl
     |Sexpr e -> expr e retr destl
     |Sif (e,s1,s2) -> let tr_lbl = stmt s1 destl retr exitl
