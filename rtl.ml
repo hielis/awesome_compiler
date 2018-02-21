@@ -200,8 +200,8 @@ and sel_i_stmt = function
   | Sif(e, s1, s2) ->
      let ep = sel_i e in
      (match ep.expr_node with
-      |Econst(t) when t = Int32.one -> sel_i_stmt s1
       |Econst(t) when t = Int32.zero -> sel_i_stmt s2
+      |Econst(t) -> sel_i_stmt s1
       |_ -> Sif(ep, s1, s2)
      )
   | Swhile(e, s) -> Swhile(sel_i e, s)
