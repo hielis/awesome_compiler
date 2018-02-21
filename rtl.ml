@@ -11,6 +11,55 @@ let le a b = if Int32.compare a b <= 0 then {expr_node = Econst(Int32.one); expr
 let gt a b = if Int32.compare a b > 0 then {expr_node = Econst(Int32.one); expr_typ = Tint} else  {expr_node = Econst(Int32.zero); expr_typ = Tint};;
 let ge a b = if Int32.compare a b >= 0 then {expr_node = Econst(Int32.one); expr_typ = Tint} else  {expr_node = Econst(Int32.zero); expr_typ = Tint};;
 
+(*
+
+let fact_eq e (op : Ttree.binop) e11 e12 e21 e22 = match op with
+  |Badd->
+    (match e11.expr_node, e12.expr_node, e21.expr_node, e22.expr_node with
+     |_,Econst(n1), _, Econst(n2) when n1 = n2 -> {expr_node = Ebinop(Beq, e11, e21);
+                                                   expr_typ = Tint}
+     |_,Econst(n1),Econst(n2),_ when n1 = n2 ->  {expr_node = Ebinop(Beq, e11, e22);
+                                                   expr_typ = Tint}
+     |Econst(n1),_,Econst(n2),_ when n1 = n2 ->  {expr_node = Ebinop(Beq, e12, e22);
+                                                   expr_typ = Tint}
+     |Econst(n1),_,_,Econst(n2) when n1 = n2 ->  {expr_node = Ebinop(Beq, e11, e21);
+                                                   expr_typ = Tint}
+     |_,_,_,_ -> e
+    )
+  |Bsub ->
+    (match e11.expr_node, e12.expr_node, e21.expr_node, e22.expr_node with
+     |_,Econst(n1), _, Econst(n2) when n1 = n2 -> {expr_node = Ebinop(Beq, e11, e21);
+                                                   expr_typ = Tint}
+     |Econst(n1),_,Econst(n2),_ when n1 = n2 ->  {expr_node = Ebinop(Beq, e12, e22);
+                                                  expr_typ = Tint}
+     |_,_,_,_ -> e
+    )
+  |_ -> e
+;;
+let fact_neq e op e11 e12 e21 e22 = match op with
+  |Bmul | Badd-> 
+    (match e11.expr_node, e12.expr_node, e21.expr_node, e22.expr_node with
+     |_,Econst(n1), _, Econst(n2) when n1 = n2 -> {expr_node = Ebinop(Bneq, e11, e21);
+                                                   expr_typ = Tint}
+     |_,Econst(n1),Econst(n2),_ when n1 = n2 ->  {expr_node = Ebinop(Bneq, e11, e22);
+                                                   expr_typ = Tint}
+     |Econst(n1),_,Econst(n2),_ when n1 = n2 ->  {expr_node = Ebinop(Bneq, e12, e22);
+                                                   expr_typ = Tint}
+     |Econst(n1),_,_,Econst(n2) when n1 = n2 ->  {expr_node = Ebinop(Bneq, e11, e21);
+                                                   expr_typ = Tint}
+     |_,_,_,_ -> e
+    )
+  |Bsub ->
+    (match e11.expr_node, e12.expr_node, e21.expr_node, e22.expr_node with
+     |_,Econst(n1), _, Econst(n2) when n1 = n2 -> {expr_node = Ebinop(Bneq, e11, e21);
+                                                   expr_typ = Tint}
+     |Econst(n1),_,Econst(n2),_ when n1 = n2 ->  {expr_node = Ebinop(Bneq, e12, e22);
+                                                  expr_typ = Tint}
+     |_,_,_,_ -> e
+    )
+  |_ -> e
+;;
+ *)
 let mk_not (e:Ttree.expr) = match e.expr_node with
   |Ttree.Econst(n) when (n = Int32.zero) -> {expr_node = Ttree.Econst(Int32.one);
                                              expr_typ = Tint}
@@ -62,99 +111,29 @@ and mk_eq e1 e2 = match e1.expr_node, e2.expr_node with
   |Ttree.Econst(n1), Econst(n2) when n1 = n2 -> {expr_node = Econst(Int32.one);
                                                  expr_typ = Tint}
   |Econst(n1), Econst(n2) -> {expr_node = Econst(Int32.zero); expr_typ = Tint}
-(*  |Ebinop(op, Ttree.Econst(n1), e1), Ebinop(Badd, Econst(n2), e2)
-       when ((n1 = n2) && (op = Badd || op = Bmul || op = Bsub)) ->
-    Ebinop(Beq, e1, e2)
-  |Ebinop(Badd, Econst(n1), e1), Ebinop(Badd, e2, Econst(n2))
-       when ((n1 = n2) && (op = Badd || op = Bmul)) ->
-    Ebinop(Beq, e1, e2)
-  |Ebinop(Badd, e2, Econst(n2)), Ebinop(Badd, Econst(n1), e1)
-       when ((n1 = n2) && (op = Badd || op = Bmul)) ->
-    Ebinop(Beq, e1, e2)
-  |Ebinop(Badd, e1, Econst(n1)), Ebinop(Badd, e2, Econst(n2))
-       when ((n1 = n2) && (op = Badd || op = Bmul || op = Bsub)) ->
-    Ebinop(Beq, e1, e2)*)
+  (*|Ebinop(op1, e11, e12), Ebinop(op2, e21, e22) when (op1 = op2)-> fact_eq e op e11 e12 e21 e22 *)
   |_, _ -> {expr_node = Ebinop(Beq, e1, e2); expr_typ = Tint}
 
 and mk_neq e1 e2 = match e1.expr_node, e2.expr_node with
   |Econst(n1), Econst(n2) when n1 = n2 -> {expr_node = Econst(Int32.zero); expr_typ = Tint}
   |Econst(n1), Econst(n2) -> {expr_node = Econst(Int32.one); expr_typ = Tint}
-  (*|Ebinop(op, Econst(n1), e1), Ebinop(Badd, Econst(n2), e2)
-       when ((n1 = n2) && (op = Badd || op = Bmul || op = Bsub)) ->
-    Ebinop(Bneq, e1, e2)
-  |Ebinop(Badd, Econst(n1), e1), Ebinop(Badd, e2, Econst(n2))
-       when ((n1 = n2) && (op = Badd || op = Bmul)) ->
-    Ebinop(Bneq, e1, e2)
-  |Ebinop(Badd, e2, Econst(n2)), Ebinop(Badd, Econst(n1), e1)
-       when ((n1 = n2) && (op = Badd || op = Bmul)) ->
-    Ebinop(Bneq, e1, e2)
-  |Ebinop(Badd, e1, Econst(n1)), Ebinop(Badd, e2, Econst(n2))
-       when ((n1 = n2) && (op = Badd || op = Bmul || op = Bsub)) ->
-    Ebinop(Bneq, e1, e2)*)
+ (* |Ebinop(op1, e11, e12), Ebinop(op2, e21, e22) when (op1 = op2)-> fact_neq e op e11 e12 e21 e22 *)
   |_, _ -> {expr_node = Ebinop(Bneq, e1, e2); expr_typ = Tint}
 
 and mk_lt e1 e2 = match e1.expr_node, e2.expr_node with 
   |Econst(n1), Econst(n2) -> lt n1 n2
-  (*|Ebinop(op, Econst(n1), e1), Ebinop(Badd, Econst(n2), e2)
-       when ((n1 = n2) && (op = Badd || op = Bsub)) ->
-    Ebinop(Blt, e1, e2)
-  |Ebinop(Badd, Econst(n1), e1), Ebinop(Badd, e2, Econst(n2))
-       when ((n1 = n2) && (op = Badd)) ->
-    Ebinop(Blt, e1, e2)
-  |Ebinop(Badd, e2, Econst(n2)), Ebinop(Badd, Econst(n1), e1)
-       when ((n1 = n2) && (op = Badd)) ->
-    Ebinop(Blt, e1, e2)
-  |Ebinop(Badd, e1, Econst(n1)), Ebinop(Badd, e2, Econst(n2))
-       when ((n1 = n2) && (op = Badd || op = Bsub)) ->
-    Ebinop(Blt, e1, e2)*)
   |_, _ -> {expr_node = Ebinop(Blt, e1, e2); expr_typ = Tint}
 
 and mk_le e1 e2 = match e1.expr_node, e2.expr_node with 
   |Econst(n1), Econst(n2) -> le n1 n2
-  (*|Ebinop(op, Econst(n1), e1), Ebinop(Badd, Econst(n2), e2)
-       when ((n1 = n2) && (op = Badd || op = Bsub)) ->
-    Ebinop(Ble, e1, e2)
-  |Ebinop(Badd, Econst(n1), e1), Ebinop(Badd, e2, Econst(n2))
-       when ((n1 = n2) && (op = Badd)) ->
-    Ebinop(Ble, e1, e2)
-  |Ebinop(Badd, e2, Econst(n2)), Ebinop(Badd, Econst(n1), e1)
-       when ((n1 = n2) && (op = Badd)) ->
-    Ebinop(Ble, e1, e2)
-  |Ebinop(Badd, e1, Econst(n1)), Ebinop(Badd, e2, Econst(n2))
-       when ((n1 = n2) && (op = Badd || op = Bsub)) ->
-    Ebinop(Ble, e1, e2)*)
   |_, _ -> {expr_node = Ebinop(Ble, e1, e2); expr_typ = Tint}
 
 and mk_ge e1 e2 = match e1.expr_node, e2.expr_node with 
   |Econst(n1), Econst(n2) -> ge n1 n2
- (* |Ebinop(op, Econst(n1), e1), Ebinop(Badd, Econst(n2), e2)
-       when ((n1 = n2) && (op = Badd || op = Bsub)) ->
-    {expr_node = Ebinop(Ble, e1, e2); expr_typ = Tint}
-  |Ebinop(Badd, Econst(n1), e1), Ebinop(Badd, e2, Econst(n2))
-       when ((n1 = n2) && (op = Badd)) ->
-    {expr_node = Ebinop(Ble, e1, e2); expr_typ = Tint}
-  |Ebinop(Badd, e2, Econst(n2)), Ebinop(Badd, Econst(n1), e1)
-       when ((n1 = n2) && (op = Badd)) ->
-    {expr_node = Ebinop(Ble, e1, e2); expr_typ = Tint}
-  |Ebinop(Badd, e1, Econst(n1)), Ebinop(Badd, e2, Econst(n2))
-       when ((n1 = n2) && (op = Badd || op = Bsub)) ->
-    {expr_node = Ebinop(Ble, e1, e2); expr_typ = Tint}*)
   |_, _ -> {expr_node = Ebinop(Bge, e1, e2); expr_typ = Tint}
 
 and mk_gt e1 e2 = match e1.expr_node, e2.expr_node with
   |Econst(n1), Econst(n2) -> gt n1 n2
-  (*|Ebinop(op, Econst(n1), e1), Ebinop(Badd, Econst(n2), e2)
-       when ((n1 = n2) && (op = Badd || op = Bsub)) ->
-    Ebinop(Bgt, e1, e2)
-  |Ebinop(Badd, Econst(n1), e1), Ebinop(Badd, e2, Econst(n2))
-       when ((n1 = n2) && (op = Badd)) ->
-    Ebinop(Bgt, e1, e2)
-  |Ebinop(Badd, e2, Econst(n2)), Ebinop(Badd, Econst(n1), e1)
-       when ((n1 = n2) && (op = Badd)) ->
-    Ebinop(Bgt, e1, e2)
-  |Ebinop(Badd, e1, Econst(n1)), Ebinop(Badd, e2, Econst(n2))
-       when ((n1 = n2) && (op = Badd || op = Bsub)) ->
-    Ebinop(Bgt, e1, e2)*)
   |_, _ -> {expr_node = Ebinop(Bgt, e1, e2); expr_typ = Tint}
 
 and mk_and e1 e2 = match e1.expr_node, e2.expr_node with 
