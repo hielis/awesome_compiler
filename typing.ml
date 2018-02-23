@@ -22,6 +22,7 @@ let eq_type tref = function |Ttypenull -> not (tref = Tvoidstar)
 
 let is_int = eq_type Tint;;
 
+
 let string_of_type = function
   | Tvoidstar  -> "void*"
   | Ttypenull  -> "typenull"
@@ -161,7 +162,6 @@ in
          if(test) then {expr_node = Ecall(i.id, lp);
                         expr_typ = ret_typ}
          else raise (Error(error_message "Function was used with the wrong types" exp.expr_loc))
-         
        |Esizeof(i) ->
          let s = (try Hashtbl.find struct_table (i.id)
                   with Not_found -> raise (Error(error_message "The struct used is unbound" exp.expr_loc))) in
