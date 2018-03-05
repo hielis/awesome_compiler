@@ -60,6 +60,8 @@ let () =
     if debug then Ertltree.print_file std_formatter p;
     if !interp_ertl then begin ignore (Ertlinterp.program p); exit 0 end;
     if debug then Lifetime.print_file std_formatter p;
+    if debug then Ltl.print_ltl std_formatter p;
+      
     (* ... *)
   with
     | Lexer.Lexical_error c ->
