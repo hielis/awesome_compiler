@@ -14,11 +14,11 @@ let eq_type tref = function |Ttypenull -> not (tref = Tvoidstar)
                             |Tvoidstar -> not (tref = Tint || tref = Ttypenull)
                             |Tint -> (tref = Ttypenull) || (tref = Tint)
                             |Tstructp a -> (match tref with
+                                              (*deux structures sont identiques si elle ont le m\^eme nom*)
                                             |Tstructp b -> (a.str_name = b.str_name)
                                             |Ttypenull | Tvoidstar -> true
                                             |Tint -> false)
 ;;
-(*checking structure type is not safe yet*)
 
 let is_int = eq_type Tint;;
 
@@ -30,7 +30,7 @@ let string_of_type = function
   | Tstructp x -> "struct " ^ (x.str_name ^ " *")
 
 
-
+(*Fonction permettant la gestion des contextes :*)
 let typ_context_opt context (v:Ttree.ident) = Hashtbl.find_opt context.vars v;;
 
 let typ_context context v = match typ_context_opt context v.id with
@@ -49,12 +49,14 @@ let create_local_context = function
 
 
 let program p =
-  let function_table = Hashtbl.create 64 in (* An hashtable with all the functions ids as keys binded to (typ list * typ) à savoir les types des arguments et le type de retour *)
+  let function_table = Hashtbl.create 64 in
+  (* An hashtable with all the functions ids as keys binded to (typ list * typ) à savoir les types des arguments et le type de retour *)
 
   Hashtbl.add function_table "putchar" ([(Ttree.Tint, "c")], Ttree.Tint);
   Hashtbl.add function_table "sbrk" ([(Ttree.Tint, "n")], Ttree.Tvoidstar);
 
-  let struct_table = Hashtbl.create 64 in (*An hashtable matching the structs id with their structures *)
+  let struct_table = Hashtbl.create 64 in
+  (*An hashtable matching the structs id with their structures *)
 
   let convert_type = function |Ptree.Tstructp(i) -> (try Ttree.Tstructp (Hashtbl.find struct_table i.id)
                                                      with Not_found -> raise(Error(error_message "Typestruct is not defined properly" i.id_loc))
@@ -63,8 +65,10 @@ let program p =
 
   in
 
+(*gere les nouvelles variables, contexte par contexte*)
+
 let define_var context (t, i) = match (typ_context_opt context i.id) with
-  |Some(_) -> 
+  |Some(_) ->
    (match context.heirs with
     |Some(h) ->
       if (Hashtbl.mem h i.id) then Hashtbl.add context.vars i.id (convert_type t)
@@ -74,6 +78,7 @@ let define_var context (t, i) = match (typ_context_opt context i.id) with
 in
 
   let rec type_expr (context : local_context) exp = match exp.expr_node with
+    (*Gere les expressions*)
     |Econst(a) when (Int32.to_int a = 0)-> {expr_node = Econst(a); expr_typ = Ttypenull}
     |Econst(a)-> {expr_node = Econst(a);
                   expr_typ = Tint}
@@ -144,13 +149,13 @@ in
                              in
                              {expr_node = Eassign_field(epp, x, e1p);
                               expr_typ = x.field_typ}
-             |Ttypenull | Tvoidstar -> failwith "think about it"
+             |Ttypenull | Tvoidstar -> failwith "think about it" (*On ne peut pas acceder à un champ d'un Tint ou d'un Tvoidstar*)
              |Tint -> raise (Error(error_message "Tried to access the field of an int" exp.expr_loc))
             )
          )
 
        |Ecall(i, l) ->
-         let (args, ret_typ) = (try (Hashtbl.find function_table i.id)
+         let (args, ret_typ) = (try (Hashtbl.find function_table i.id) (*fail si la fonction n'a pas ete construite*)
                                 with Not_found -> raise (Error(error_message "Function unknown" exp.expr_loc))) in
          let compare b ep dv = match b, ep.expr_typ, dv with
            |false, _, _ -> false
@@ -169,6 +174,7 @@ in
          expr_typ = Tint}
        in
 
+       (*type les instructions*)
        let rec type_stmt context st = match st.stmt_node with
        |Sskip -> Ttree.Sskip
        |Sexpr(e) -> (try Sexpr(type_expr context e)
@@ -204,7 +210,7 @@ in
          let l1 =  List.map process_one_variable dvl and l2 = List.map process_one_instruction stl in
          (l1, l2)
        in
-
+       (*type les structures, la table de structure sera ajoutée au proramme typ'e*)
        let type_struct = function
          |Dstruct (i, dvl) ->
            ( match Hashtbl.find_opt (struct_table) (i.id) with
@@ -223,7 +229,7 @@ in
                                    )
          |_ -> failwith "Should be some dead code"
        in
-
+(*type une fonction*)
        let type_fun = function
          |Dfun df -> (*args, typret *)
            let block_context = create_local_context None
@@ -254,7 +260,7 @@ in
          List.map type_fun funs
        in
        let file = {funs = (try type_file p with Error s -> raise (Error ("Compiling failed : "^ s)));
-                   structs = struct_table;
+                   structs = struct_table; (*On passe les structures déclarée pour la production du code RTL*)
 } in
        file
       ;;

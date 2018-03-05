@@ -5,6 +5,8 @@ open Rtltree;;
 
 let struct_tbl = Hashtbl.create 32;;
 
+
+(*verifie si une expression est pure pour l'IS*)
 let rec is_pure expr = match expr.expr_node with
   |Econst(i) -> true
   |Eaccess_local(id) -> true
@@ -17,61 +19,16 @@ let rec is_pure expr = match expr.expr_node with
   |Esizeof(s) -> true
 
 
+
 let lt a b = if Int32.compare a b < 0 then {expr_node = Econst(Int32.one); expr_typ = Tint} else  {expr_node = Econst(Int32.zero); expr_typ = Tint};;
 let le a b = if Int32.compare a b <= 0 then {expr_node = Econst(Int32.one); expr_typ = Tint} else  {expr_node = Econst(Int32.zero); expr_typ = Tint};;
 
 let gt a b = if Int32.compare a b > 0 then {expr_node = Econst(Int32.one); expr_typ = Tint} else  {expr_node = Econst(Int32.zero); expr_typ = Tint};;
 let ge a b = if Int32.compare a b >= 0 then {expr_node = Econst(Int32.one); expr_typ = Tint} else  {expr_node = Econst(Int32.zero); expr_typ = Tint};;
 
-(*
 
-let fact_eq e (op : Ttree.binop) e11 e12 e21 e22 = match op with
-  |Badd->
-    (match e11.expr_node, e12.expr_node, e21.expr_node, e22.expr_node with
-     |_,Econst(n1), _, Econst(n2) when n1 = n2 -> {expr_node = Ebinop(Beq, e11, e21);
-                                                   expr_typ = Tint}
-     |_,Econst(n1),Econst(n2),_ when n1 = n2 ->  {expr_node = Ebinop(Beq, e11, e22);
-                                                   expr_typ = Tint}
-     |Econst(n1),_,Econst(n2),_ when n1 = n2 ->  {expr_node = Ebinop(Beq, e12, e22);
-                                                   expr_typ = Tint}
-     |Econst(n1),_,_,Econst(n2) when n1 = n2 ->  {expr_node = Ebinop(Beq, e11, e21);
-                                                   expr_typ = Tint}
-     |_,_,_,_ -> e
-    )
-  |Bsub ->
-    (match e11.expr_node, e12.expr_node, e21.expr_node, e22.expr_node with
-     |_,Econst(n1), _, Econst(n2) when n1 = n2 -> {expr_node = Ebinop(Beq, e11, e21);
-                                                   expr_typ = Tint}
-     |Econst(n1),_,Econst(n2),_ when n1 = n2 ->  {expr_node = Ebinop(Beq, e12, e22);
-                                                  expr_typ = Tint}
-     |_,_,_,_ -> e
-    )
-  |_ -> e
-;;
-let fact_neq e op e11 e12 e21 e22 = match op with
-  |Bmul | Badd->
-    (match e11.expr_node, e12.expr_node, e21.expr_node, e22.expr_node with
-     |_,Econst(n1), _, Econst(n2) when n1 = n2 -> {expr_node = Ebinop(Bneq, e11, e21);
-                                                   expr_typ = Tint}
-     |_,Econst(n1),Econst(n2),_ when n1 = n2 ->  {expr_node = Ebinop(Bneq, e11, e22);
-                                                   expr_typ = Tint}
-     |Econst(n1),_,Econst(n2),_ when n1 = n2 ->  {expr_node = Ebinop(Bneq, e12, e22);
-                                                   expr_typ = Tint}
-     |Econst(n1),_,_,Econst(n2) when n1 = n2 ->  {expr_node = Ebinop(Bneq, e11, e21);
-                                                   expr_typ = Tint}
-     |_,_,_,_ -> e
-    )
-  |Bsub ->
-    (match e11.expr_node, e12.expr_node, e21.expr_node, e22.expr_node with
-     |_,Econst(n1), _, Econst(n2) when n1 = n2 -> {expr_node = Ebinop(Bneq, e11, e21);
-                                                   expr_typ = Tint}
-     |Econst(n1),_,Econst(n2),_ when n1 = n2 ->  {expr_node = Ebinop(Bneq, e12, e22);
-                                                  expr_typ = Tint}
-     |_,_,_,_ -> e
-    )
-  |_ -> e
-;;
- *)
+(*Differents constructeurs de l'IS*)
+
 let mk_not (e:Ttree.expr) = match e.expr_node with
   |Ttree.Econst(n) when (n = Int32.zero) -> {expr_node = Ttree.Econst(Int32.one);
                                              expr_typ = Tint}
