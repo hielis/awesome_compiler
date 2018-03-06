@@ -32,7 +32,7 @@ let register (r : Register.t) = match (r :> string) with
 
 let operand = function
   |Reg(r) -> reg (register r)
-  |Spilled(n) -> failwith "not implemented"
+  |Spilled(n) -> (ind ~ofs:n (rsp))
 
 
 let rec lin g l =
