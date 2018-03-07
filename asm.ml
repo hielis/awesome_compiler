@@ -62,7 +62,8 @@ and instr g l = function
            emit_wl (setne (reg X86_64.r11b));
          |_-> failwith "dead code"
         );
-        emit_wl (movzbq (reg (r11b))  (r));
+        emit_wl (movzbq (reg (r11b))  (r15));
+        emit_wl (movq (reg r15) (r));
     );
     lin g l1
   |Embinop(bop, op1, op2, l1) ->
@@ -84,7 +85,8 @@ and instr g l = function
        emit l (movq r2 (reg X86_64.r11));
        emit_wl (cmpq r1 (reg X86_64.r11));
        emit_wl (a (reg X86_64.r11b));
-       emit_wl (movzbq  (reg X86_64.r11b) (r2));
+       emit_wl (movzbq  (reg X86_64.r11b) (r15));
+       emit_wl (movq (reg r15) (r2));
      |_ ->
        let a w1 w2=
          (match bop with
@@ -100,7 +102,7 @@ and instr g l = function
     );
     lin g l1
   |Epush(op, l1) -> emit l (pushq (operand op)); lin g l1
-  |Eload(r1, n, r2, l1)-> emit l (movq (ind ~ofs:n (reg r1)) (reg r2)); lin g l1
+  |Eload(r1, n, r2, l1)-> emit l (movq (ind ~ofs:n (register r1)) (reg (register r2))); lin g l1
   |Estore(r1, r2, n, l1)-> emit l (movq (reg (register r1)) (ind ~ofs:n (register r2))); lin g l1
   |Egoto(l1) -> (match (Hashtbl.find_opt visited l1) with 
                  |None -> emit_wl (label (l1 :> string))
