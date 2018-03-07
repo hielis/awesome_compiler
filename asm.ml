@@ -106,7 +106,8 @@ and instr g l = function
   |Estore(r1, r2, n, l1)-> emit l (movq (reg (register r1)) (ind ~ofs:n (register r2))); lin g l1
   |Egoto(l1) -> (match (Hashtbl.find_opt visited l1) with 
                  |None -> emit_wl (label (l1 :> string))
-                 |Some _ -> emit l (jmp (l1 :> string))
+                 |Some _ -> need_label l1;
+                   emit l (jmp (l1 :> string))
                 );
                   lin g l1
   |Ereturn -> emit l (ret);
@@ -114,23 +115,31 @@ and instr g l = function
     (match mb with
     |Mjz -> emit l (cmpq (imm 0) (reg (register r)));
             (match (Hashtbl.find_opt visited l1) with
-            |None -> emit_wl (jz (l1 :> string)); lin g l2; lin g l1;
-            |Some _-> emit_wl (jnz (l2 :> string)); lin g l1; lin g l2;
+            |None -> need_label l1;
+              emit_wl (jz (l1 :> string)); lin g l2; lin g l1;
+            |Some _-> need_label l2;
+              emit_wl (jnz (l2 :> string)); lin g l1; lin g l2;
             );
     |Mjnz -> emit l (cmpq (imm 0) (reg (register r)));
             (match (Hashtbl.find_opt visited l1) with
-            |None -> emit_wl (jnz (l1 :> string)); lin g l2; lin g l1;
-            |Some _-> emit_wl (jz (l2 :> string)); lin g l1; lin g l2;
+            |None -> need_label l1;
+              emit_wl (jnz (l1 :> string)); lin g l2; lin g l1;
+            |Some _-> need_label l2;
+              emit_wl (jz (l2 :> string)); lin g l1; lin g l2;
             )
     |Mjlei(c) -> emit l (cmpq (imm32 c) (reg (register r)));
             (match (Hashtbl.find_opt visited l1) with
-            |None -> emit_wl (jle (l1 :> string)); lin g l2; lin g l1;
-            |Some _-> emit_wl (jg (l2 :> string)); lin g l1; lin g l2;
+            |None -> need_label l1;
+              emit_wl (jle (l1 :> string)); lin g l2; lin g l1;
+            |Some _-> need_label l2;
+              emit_wl (jg (l2 :> string)); lin g l1; lin g l2;
             )
     |Mjgi(c) -> emit l (cmpq (imm32 c) (reg (register r)));
                 (match (Hashtbl.find_opt visited l1) with
-                 |None -> emit_wl (jg (l1 :> string)); lin g l2; lin g l1;
-                 |Some _-> emit_wl (jle (l2 :> string)); lin g l1; lin g l2;
+                 |None -> need_label l1;
+                   emit_wl (jg (l1 :> string)); lin g l2; lin g l1;
+                 |Some _-> need_label l2;
+                   emit_wl (jle (l2 :> string)); lin g l1; lin g l2;
             )
     );
   |Embbranch(mb, r1, r2, l1, l2) -> 
@@ -138,14 +147,40 @@ and instr g l = function
     (match (Hashtbl.find_opt visited l1) with
     |Some _ -> 
       (match mb with
-       |Mjl -> emit_wl (jge (l2 :> string)); lin g l1; lin g l2;
-       |Mjle -> emit_wl (jg (l2 :> string)); lin g l1; lin g l2;
+       |Mjl -> need_label l2;
+         emit_wl (jge (l2 :> string)); lin g l1; lin g l2;
+       |Mjle -> need_label l2;
+         emit_wl (jg (l2 :> string)); lin g l1; lin g l2;
       ) 
     |None -> 
       (match mb with
-       |Mjl -> emit_wl (jl (l1 :> string)); lin g l2; lin g l1;
-       |Mjle -> emit_wl (jle (l1 :> string)); lin g l2; lin g l1;
+       |Mjl -> need_label l1;
+         emit_wl (jl (l1 :> string)); lin g l2; lin g l1;
+       |Mjle -> need_label l1;
+         emit_wl (jle (l1 :> string)); lin g l2; lin g l1;
       )
     )
   |Ecall(i, l1) -> emit l (call (i:>string)); lin g l1
   |Epop(r, l1) -> emit l (popq (register r)); lin g l1
+
+let deffun (df:Ltltree.deffun) =
+  code := [];
+  lin df.fun_body df.fun_entry;
+  let __aux a = function
+    |Code(i) -> i ++ a
+    |Label(s)-> 
+      if Hashtbl.mem labels s then
+      (inline (s :> string)) ++ a
+      else a
+  in
+  (inline (String.concat "" [df.fun_name ;":"])) ++ (List.fold_left __aux (nop) !code)
+;;
+
+let program f =
+  let __aux a b = a++(deffun b) in
+{
+ text = (inline ".globl main")++(inline "\n ") ++(List.fold_left __aux (nop) f.funs) ;
+ data = nop
+}
+;;
+
