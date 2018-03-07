@@ -113,14 +113,15 @@ let color graph live_map =
     in
     Label.M.iter __iter lm
   in
-  fill_costtbl live_map;  
+  fill_costtbl live_map;
+  
   let fusionner g v1 v2 =
-    if (not(v1=v2)) then
+    if (v1<>v2) then
       (let e1 = Register.M.find v1 g and e2 = Register.M.find v2 g in
        Hashtbl.replace costtbl v2 ((Hashtbl.find costtbl v1) +. (Hashtbl.find costtbl v2)); 
        let __fold_replace v edge acc =
-         let __map_replace v =
-           if (v=v1) then v2 else v
+         let __map_replace vaux =
+           if (vaux=v1) then v2 else vaux
          in
          Register.M.add v {prefs = Register.S.map __map_replace edge.prefs;
                            intfs = Register.S.map __map_replace edge.intfs;} acc
@@ -154,15 +155,15 @@ let color graph live_map =
       if (Register.is_pseudo v2) then
         let __fold v acc =
           let edge = Register.M.find v g in
-          acc && ((Register.is_pseudo v && ((Register.S.cardinal edge.prefs) + (Register.S.cardinal edge.intfs) < k))||((Register.S.mem v e1.prefs) || (Register.S.mem v e1.intfs)))
+          acc && ((Register.is_pseudo v && ((Register.S.cardinal edge.prefs) + (Register.S.cardinal edge.intfs) < k))||((Register.S.mem v e2.prefs) || (Register.S.mem v e2.intfs)))
         in
-        Register.S.fold __fold e2.prefs (Register.S.fold __fold e2.intfs true)
+        Register.S.fold __fold e1.prefs (Register.S.fold __fold e1.intfs true)
       else
         let __fold v acc =
           let edge = Register.M.find v g in
-          acc && ((Register.is_hw v && ((Register.S.cardinal edge.prefs) + (Register.S.cardinal edge.intfs) < k))||((Register.S.mem v e1.prefs) || (Register.S.mem v e1.intfs)))
+          acc && ((Register.is_hw v && ((Register.S.cardinal edge.prefs) + (Register.S.cardinal edge.intfs) < k))||((Register.S.mem v e2.prefs) || (Register.S.mem v e2.intfs)))
         in
-        Register.S.fold __fold e2.prefs (Register.S.fold __fold e2.intfs true)  
+        Register.S.fold __fold e1.prefs (Register.S.fold __fold e1.intfs true)  
         
     in
     let __fold_pref_edge v edges = function
@@ -177,10 +178,10 @@ let color graph live_map =
     in
     match (Register.M.fold __fold_pref_edge g None) with
     |None->freeze k g
-    |Some(v1,v2)-> let u1,u2 = if (Register.is_hw v2) then v1,v2 else v2,v1 in
+    |Some(v1,v2)-> let u1,u2 = if (Register.is_hw v1) then v2,v1 else v1,v2 in
                    let c = simplify k (fusionner g u1 u2) in
                    Register.M.add u1 (Register.M.find u2 c) c
-
+                   
   and freeze k g =
     let __find_vertice v edge acc =
       let l = (Register.S.cardinal edge.prefs) + (Register.S.cardinal edge.intfs) in
@@ -193,7 +194,13 @@ let color graph live_map =
     in
     match Register.M.fold __find_vertice g None with
     |None -> spill k g
-    |Some(v,_) -> simplify k (Register.M.add v {prefs = Register.S.empty; intfs = (Register.M.find v g).intfs} g)
+    |Some(v,_) -> let __remove_pref key e acc =
+                     if (key=v) then
+                       Register.M.add v {prefs = Register.S.empty; intfs = e.intfs} acc
+                     else
+                       Register.M.add key {prefs = Register.S.remove v e.prefs; intfs = e.intfs} acc
+                   in
+                   simplify k (Register.M.fold __remove_pref g Register.M.empty)
 
   and spill k g =
     if (Register.M.is_empty g) then
@@ -222,20 +229,137 @@ let color graph live_map =
       with Not_found -> available_colors
     in
     let edges = Register.M.find v g in
-    let color_set = Register.S.fold __find_color edges.prefs (Register.S.fold __find_color edges.intfs colors) in
-    let couleur = try (Reg (Register.S.min_elt color_set))
-                  with Not_found -> Spilled (8*(get_spill ()))
+    let color_set = (*Register.S.fold __find_color edges.prefs *)(Register.S.fold __find_color edges.intfs colors) in
+    let couleur = try (Reg (if (Register.S.mem v color_set) then v else Register.S.min_elt color_set))
+                  with Not_found -> Spilled (8*(1+get_spill ()))
     in
-    
     Register.M.add v couleur c
 
-    in
-
+  in
   let c = simplify (Register.S.cardinal colors) graph in
   (c,8*(necessary_space ()))
+
+let deffun (df:Ertltree.deffun) =
+  let live_map = liveness df.fun_body in
+  let c,space = color (make (live_map)) live_map in
+  let lookup r = Register.M.find r c in
+  let graph = ref Label.M.empty in
+  let locals_reg = ref df.fun_locals in
+  let add_to_graph l i =
+    graph := Label.M.add l i !graph;
+  in
+
+  let is_done = Hashtbl.create 32 in
   
+  let instr = function
+    |Ertltree.Econst(i, r, l) -> Ltltree.Econst(i, lookup r, l)
+    |Estore(r1, r2, i, l) -> (match (lookup r1),(lookup r2) with
+                              |Reg(p1),Reg(p2)->Estore(p1, p2, i, l)
+                              |Reg(p1),s2->let l2 = Label.fresh() in
+                                           let l3 = Label.fresh() in
+                                           add_to_graph l3 (Embinop(Mmov, Reg(Register.tmp1), s2, l));
+                                           add_to_graph l2 (Estore(p1, Register.tmp1, i, l2));
+                                           Embinop(Mmov, s2, Reg(Register.tmp1), l2);
+                              |s1,Reg(p2)->let l2 = Label.fresh() in
+                                           add_to_graph l2 (Estore(Register.tmp1, p2, i, l));
+                                           Embinop(Mmov, s1, Reg(Register.tmp1), l2);
+                              |s1,s2->let l2 = Label.fresh() in
+                                      let l3 = Label.fresh() in
+                                      let l4 = Label.fresh() in
+                                      add_to_graph l2 (Embinop(Mmov, Reg(Register.tmp2), s2, l));
+                                      add_to_graph l3 (Estore(Register.tmp1, Register.tmp2, i, l2));
+                                      add_to_graph l4 (Embinop(Mmov, s2, Reg(Register.tmp2), l3));
+                                      Embinop(Mmov, s1, Reg(Register.tmp1), l4)
+                             )
+    |Eload(r1, i, r2, l) -> (match (lookup r1),(lookup r2) with
+                             |Reg(p1),Reg(p2)->Eload(p1, i, p2, l)
+                             |Reg(p1),s2->let l2 = Label.fresh() in
+                                          add_to_graph l2 (Embinop(Mmov, Reg(Register.tmp1), s2, l));
+                                          Eload(p1, i, Register.tmp1, l2);
+                             |s1,Reg(p2)->let l2 = Label.fresh() in
+                                          add_to_graph l2 (Eload(Register.tmp1, i, p2, l));
+                                          Embinop(Mmov, s1, Reg(Register.tmp1), l2);
+                             |s1,s2->let l2 = Label.fresh() in
+                                     let l3 = Label.fresh() in
+                                     add_to_graph l2 (Embinop(Mmov, s1, Reg(Register.tmp1), l));
+                                     add_to_graph l3 (Eload(Register.tmp1, i, Register.tmp2, l2));
+                                     Embinop(Mmov, Reg(Register.tmp2), s2, l3)
+                            )
+    |Emunop(op, r, l) -> Emunop(op, lookup r, l)
+    |Embinop(op, r1, r2, l) when op = Mmov && (lookup r1)=(lookup r2) -> Egoto(l)
+    |Embinop(op, r1, r2, l) when op = Mmul -> let s1 = lookup r1 and s2 = lookup r2 in
+                                              (match s2 with
+                                              |Reg(_)->Embinop(Mmul, s1, s2, l)
+                                              |_->let l2 = Label.fresh() in
+                                                  let l3 = Label.fresh() in
+                                                  add_to_graph l2 (Embinop(Mmov, Reg(Register.tmp1), s2, l));
+                                                  add_to_graph l3 (Embinop(Mmul, s1, Reg(Register.tmp1), l2)); 
+                                                  Embinop(Mmov, s2, Reg(Register.tmp1), l3)
+                                              )
+    |Embinop(op, r1, r2, l) -> let s1 = lookup r1 and s2 = lookup r2 in
+                               (match s1,s2 with
+                                |Spilled(_),Spilled(_)->let l2 = Label.fresh() in
+                                                        let l3 = Label.fresh() in
+                                                        add_to_graph l2 (Embinop(Mmov, Reg(Register.tmp1), s2, l));
+                                                        add_to_graph l3 (Embinop(op, s1, Reg(Register.tmp1), l2)); 
+                                                        Embinop(Mmov, s2, Reg(Register.tmp1), l3)
+                                |_,_-> Embinop(op, s1, s2, l)
+                               )
+    |Emubranch(b, r, l1, l2) -> Emubranch(b, r, l1, l2)
+    |Embbranch(b, r1, r2, l1, l2) -> Embbranch(b, r1, r2, l1, l2)
+    |Egoto(l) -> Egoto(l)
+    |Ecall(id,n,l) -> Ecall(id,l)
+    |Ealloc_frame(l) -> let l2 = Label.fresh() in
+                        let l3 = Label.fresh() in
+                        add_to_graph l2 (Emunop(Maddi(Int32.of_int((-space))), Reg(Register.rbp), l));
+                        add_to_graph l3 (Embinop(Mmov, Reg(Register.rsp), Reg(Register.rbp), l2));
+                        Epush(Reg(Register.rbp), l3);
+    |Edelete_frame(l) -> let l2 = Label.fresh() in
+                         add_to_graph l2 (Epop(Register.rbp, l));
+                         Embinop(Mmov, Reg(Register.rbp), Reg(Register.rsp), l2);
+    |Eget_param(n,r,l) -> let l2 = Label.fresh() in
+                          add_to_graph l2 (Embinop(Mmov, Reg(Register.tmp1), lookup r, l));
+                          Embinop(Mmov, Spilled(n), Reg(Register.tmp1), l2) 
+    |Epush_param(r,l) -> Epush(lookup r, l)
+    |Ereturn -> Ereturn
+  in
 
+  let rec rewrite_from lentry = match Hashtbl.find_opt is_done lentry with
+    |Some _ -> ();
+    |None ->
+      Hashtbl.add is_done lentry true;
+      let i = Label.M.find lentry df.fun_body in
+      add_to_graph lentry (instr i);
+      (match i with
+       |Ertltree.Econst(i, r, l) -> rewrite_from l
+       |Estore(r1, r2, i, l) -> rewrite_from l
+       |Eload(r1, i, r2, l) -> rewrite_from l
+       |Emunop(op, r, l) -> rewrite_from l
+       |Embinop(op, r1, r2, l) -> rewrite_from l
+       |Emubranch(b, r, l1, l2) -> rewrite_from l1; rewrite_from l2
+       |Embbranch(b, r1, r2, l1, l2) -> rewrite_from l1; rewrite_from l2
+       |Egoto(l) -> rewrite_from l;
+       |Ecall(id, rl, l) -> rewrite_from l;
+       |Ealloc_frame(l)-> rewrite_from l
+       |Edelete_frame(l)-> rewrite_from l
+       |Eget_param(_,_,l)-> rewrite_from l
+       |Epush_param(_,l)-> rewrite_from l
+       |Ereturn -> ()
+       )
+  in
+  
+  rewrite_from df.fun_entry;
+                                
+  {
+    fun_name = df.fun_name;
+    fun_entry = df.fun_entry;
+    fun_body = !graph;
+  }
 
+let program (p:Ertltree.file) =
+  {funs = List.map deffun p.funs}
+                                  
+                                  
   
 open Format
 open Pp
@@ -261,8 +385,10 @@ let print_deffun_colors (f: Ertltree.deffun) =
   print c
   
 let print_ltl fmt (p: Ertltree.file) =
-  fprintf fmt "=== LTL =============================@\n";
+  fprintf fmt "=== PREFS & INTFS GRAPH  =============================@\n";
   List.iter print_deffun p.funs;
+  Pervasives.print_newline ();
   fprintf fmt "\n=== COLORS ===============================@\n";
   List.iter print_deffun_colors p.funs;
+  Pervasives.print_newline ();
   

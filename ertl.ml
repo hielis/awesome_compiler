@@ -63,7 +63,6 @@ let deffun (df:Rtltree.deffun) =
       
     
   in
-  
   let instr = function
     |Rtltree.Econst(i, r, l) ->
       Ertltree.Econst(i, r, l)
@@ -71,8 +70,8 @@ let deffun (df:Rtltree.deffun) =
     |Eload(r1, i, r2, l) -> Eload(r1, i, r2, l)
     |Emunop(op, r, l) -> Emunop(op, r, l)
     |Embinop(Mdiv, r1, r2, l) ->
-      let l2 = Label.fresh()
-      and l3 = Label.fresh() in
+      let l3 = Label.fresh() in
+      let l2 = Label.fresh() in
       add_to_graph l2 (Embinop(Mdiv, r1, rax, l3));
       add_to_graph l3 (Embinop(Mmov, rax, r2, l));
       Embinop(Mmov, r2, rax, l2)
@@ -83,7 +82,6 @@ let deffun (df:Rtltree.deffun) =
     |Ecall(r, id, rl, l) -> manage_args_and_call l id r rl
 
   in
-
   let rec rewrite_from lentry = match Hashtbl.find_opt is_done lentry with
     |Some _ -> ();
     |None ->
