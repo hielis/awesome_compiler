@@ -242,9 +242,11 @@ let color graph live_map =
 let deffun (df:Ertltree.deffun) =
   let live_map = liveness df.fun_body in
   let c,space = color (make (live_map)) live_map in
-  let lookup r = Register.M.find r c in
+  let lookup r = 
+    if Register.is_hw r then Reg(r)
+    else Register.M.find r c in
   let graph = ref Label.M.empty in
-  let locals_reg = ref df.fun_locals in
+  (*let locals_reg = ref df.fun_locals in*)
   let add_to_graph l i =
     graph := Label.M.add l i !graph;
   in
@@ -305,8 +307,32 @@ let deffun (df:Ertltree.deffun) =
                                                         Embinop(Mmov, s2, Reg(Register.tmp1), l3)
                                 |_,_-> Embinop(op, s1, s2, l)
                                )
-    |Emubranch(b, r, l1, l2) -> Emubranch(b, r, l1, l2)
-    |Embbranch(b, r1, r2, l1, l2) -> Embbranch(b, r1, r2, l1, l2)
+    |Emubranch(b, r, l1, l2) -> 
+      (match (lookup r) with
+       |Spilled(n) -> let lp = Label.fresh() in
+                      add_to_graph lp (Emubranch(b, Register.tmp1, l1, l2));
+                      Embinop(Mmov, Spilled(n), Reg(Register.tmp1), lp);
+       |Reg(rp) -> Emubranch(b, rp, l1, l2)
+      )
+    |Embbranch(b, r1, r2, l1, l2) -> 
+      (match (lookup r1, lookup r2) with
+       |Spilled(n1), Spilled(n2)->
+         let lp = Label.fresh() in
+         let lp1 = Label.fresh () in
+         add_to_graph lp1 ( Embinop(Mmov, Spilled(n1), Reg(Register.tmp1), lp1));
+         add_to_graph lp (Embbranch(b, Register.tmp1, Register.tmp2, l1, l2));
+         Embinop(Mmov, Spilled(n2), Reg(Register.tmp2), lp1)
+       |Reg(r1p), Spilled(n2)->
+         let lp = Label.fresh() in
+         add_to_graph lp (Embbranch(b, r1p, Register.tmp1, l1, l2));
+         Embinop(Mmov, Spilled(n2), Reg(Register.tmp1), lp)
+       |Spilled(n1), Reg(r2p)->
+         let lp = Label.fresh() in
+         add_to_graph lp (Embbranch(b, Register.tmp1, r2p, l1, l2));
+         Embinop(Mmov, Spilled(n1), Reg(Register.tmp1), lp);
+       |Reg(r1p), Reg(r2p) -> Embbranch(b, r1p, r2p, l1, l2)
+      )
+
     |Egoto(l) -> Egoto(l)
     |Ecall(id,n,l) -> Ecall(id,l)
     |Ealloc_frame(l) -> let l2 = Label.fresh() in

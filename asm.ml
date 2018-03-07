@@ -7,8 +7,9 @@ let code = ref []
 let emit l i = code := Code i :: Label l :: !code
 let emit_wl i = code := Code i :: !code
 let labels = Hashtbl.create 17
+let useful = Hashtbl.create 17
 let need_label l = Hashtbl.add labels l ()
-
+let weneed_label l = Hashtbl.add useful l ()
 
 
 let register (r : Register.t) = match (r :> string) with
@@ -28,7 +29,7 @@ let register (r : Register.t) = match (r :> string) with
   |"%r13" -> X86_64.r13
   |"%r14" -> X86_64.r14
   |"%r15"  -> X86_64.r15
-  |_ -> failwith "Unknown register"
+  |_ -> failwith ("Unknown register :" ^ (r :> string))
 
 let operand = function
   |Reg(r) -> reg (register r)
@@ -41,6 +42,7 @@ let rec lin g l =
     instr g l (Label.M.find l g)
   end else begin
     need_label l;
+    weneed_label l;
     emit_wl (jmp (l :> string))
   end
 
@@ -105,8 +107,8 @@ and instr g l = function
   |Eload(r1, n, r2, l1)-> emit l (movq (ind ~ofs:n (register r1)) (reg (register r2))); lin g l1
   |Estore(r1, r2, n, l1)-> emit l (movq (reg (register r1)) (ind ~ofs:n (register r2))); lin g l1
   |Egoto(l1) -> (match (Hashtbl.find_opt visited l1) with 
-                 |None -> emit_wl (label (l1 :> string))
-                 |Some _ -> need_label l1;
+                 |None -> emit l (label (l1 :> string))
+                 |Some _ -> weneed_label l1;
                    emit l (jmp (l1 :> string))
                 );
                   lin g l1
@@ -115,48 +117,48 @@ and instr g l = function
     (match mb with
     |Mjz -> emit l (cmpq (imm 0) (reg (register r)));
             (match (Hashtbl.find_opt visited l1) with
-            |None -> need_label l1;
+            |None -> weneed_label l1;
               emit_wl (jz (l1 :> string)); lin g l2; lin g l1;
-            |Some _-> need_label l2;
+            |Some _-> weneed_label l2;
               emit_wl (jnz (l2 :> string)); lin g l1; lin g l2;
             );
     |Mjnz -> emit l (cmpq (imm 0) (reg (register r)));
             (match (Hashtbl.find_opt visited l1) with
-            |None -> need_label l1;
+            |None -> weneed_label l1;
               emit_wl (jnz (l1 :> string)); lin g l2; lin g l1;
-            |Some _-> need_label l2;
+            |Some _-> weneed_label l2;
               emit_wl (jz (l2 :> string)); lin g l1; lin g l2;
             )
     |Mjlei(c) -> emit l (cmpq (imm32 c) (reg (register r)));
             (match (Hashtbl.find_opt visited l1) with
-            |None -> need_label l1;
+            |None -> weneed_label l1;
               emit_wl (jle (l1 :> string)); lin g l2; lin g l1;
-            |Some _-> need_label l2;
+            |Some _-> weneed_label l2;
               emit_wl (jg (l2 :> string)); lin g l1; lin g l2;
             )
     |Mjgi(c) -> emit l (cmpq (imm32 c) (reg (register r)));
                 (match (Hashtbl.find_opt visited l1) with
-                 |None -> need_label l1;
+                 |None -> weneed_label l1;
                    emit_wl (jg (l1 :> string)); lin g l2; lin g l1;
-                 |Some _-> need_label l2;
+                 |Some _-> weneed_label l2;
                    emit_wl (jle (l2 :> string)); lin g l1; lin g l2;
             )
     );
-  |Embbranch(mb, r1, r2, l1, l2) -> 
+  |Embbranch(mb, r1, r2, l1, l2) ->
     emit l (cmpq (reg (register r1))  (reg (register r2)));
     (match (Hashtbl.find_opt visited l1) with
-    |Some _ -> 
+    |Some _ ->
       (match mb with
-       |Mjl -> need_label l2;
+       |Mjl -> weneed_label l2;
          emit_wl (jge (l2 :> string)); lin g l1; lin g l2;
-       |Mjle -> need_label l2;
+       |Mjle -> weneed_label l2;
          emit_wl (jg (l2 :> string)); lin g l1; lin g l2;
-      ) 
-    |None -> 
+      )
+    |None ->
       (match mb with
-       |Mjl -> need_label l1;
+       |Mjl -> weneed_label l1;
          emit_wl (jl (l1 :> string)); lin g l2; lin g l1;
-       |Mjle -> need_label l1;
+       |Mjle -> weneed_label l1;
          emit_wl (jle (l1 :> string)); lin g l2; lin g l1;
       )
     )
@@ -168,19 +170,19 @@ let deffun (df:Ltltree.deffun) =
   lin df.fun_body df.fun_entry;
   let __aux a = function
     |Code(i) -> i ++ a
-    |Label(s)-> 
-      if Hashtbl.mem labels s then
-      (inline (s :> string)) ++ a
+    |Label(s)->
+      if (Hashtbl.mem useful s) then
+      (label (s :> string)) ++ a
       else a
   in
-  (inline (String.concat "" [df.fun_name ;":"])) ++ (List.fold_left __aux (nop) !code)
+  (inline (df.fun_name ^  ":")) ++ (List.fold_left __aux (nop) (!code))
 ;;
 
 let program f =
   let __aux a b = a++(deffun b) in
 {
- text = (inline ".globl main")++(inline "\n ") ++(List.fold_left __aux (nop) f.funs) ;
- data = nop
+  text = (inline "        .globl main")++(inline "\n ") ++(List.fold_left __aux (nop) f.funs) ;
+  data = nop
 }
 ;;
 
