@@ -41,7 +41,24 @@ let deffun (df:Rtltree.deffun) =
         l
       in List.fold_left __fold
     in
-
+    let __save_caller =
+      let __fold lbl reg arg =
+        let l = Label.fresh () in
+        add_to_graph l (Embinop(Mmov, reg, arg, lbl));
+        l
+      in List.fold_left2 __fold
+    in
+    let __restore_caller =
+      __save_caller
+    in
+    let __generate_new_register e =
+      let r=Register.fresh() in
+      locals_reg:=Register.S.add r !locals_reg;
+      r
+    in
+    let local_reg = List.rev_map __generate_new_register Register.caller_saved in
+    let rev_caller = List.rev Register.caller_saved in
+    
     let __unstack_args lbldest = function
     |0->lbldest
     |i->let lbl = Label.fresh () in
@@ -54,12 +71,21 @@ let deffun (df:Rtltree.deffun) =
     let lbl2 = Label.fresh() in
     add_to_graph lbl2 (Embinop(Mmov, Register.result, r, lbl));
     match first_arg with
-      |None->Ecall(id, i, lbl_ret)
-      |Some(arg)->(let lbl3 = Label.fresh () in
-                   add_to_graph lbl3 (Ecall(id, i, lbl2));
-                   let lbl4 = __store_in_stack lbl3 l2 in
-                   let lbl5 = __store_in_registers lbl4 l1 (List.rev (List.tl Register.parameters)) in
-                   Embinop(Mmov, arg, (List.hd Register.parameters), lbl5))
+    |None->let lbl3 = __restore_caller lbl_ret local_reg rev_caller in
+           let lbl4 = Label.fresh() in
+           add_to_graph lbl4 (Ecall(id, i, lbl3));
+           let lbl5 = __save_caller lbl4 rev_caller local_reg in
+           Egoto(lbl5);
+      |Some(arg)->(let lbl3 = __restore_caller lbl_ret local_reg rev_caller in
+                   let lbl4 = Label.fresh() in
+                   add_to_graph lbl4 (Ecall(id, i, lbl3));
+                   let lbl6 = __store_in_stack lbl4 l2 in
+                   let lbl7 = __store_in_registers lbl6 l1 (List.rev (List.tl Register.parameters)) in
+                   let lbl8 = Label.fresh() in
+                   add_to_graph lbl8 (Embinop(Mmov, arg, (List.hd Register.parameters), lbl7));
+                   let lbl5 = __save_caller lbl8 rev_caller local_reg in
+                   Egoto(lbl5);
+                  )
       
     
   in

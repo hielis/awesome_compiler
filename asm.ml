@@ -33,7 +33,7 @@ let register (r : Register.t) = match (r :> string) with
 
 let operand = function
   |Reg(r) -> reg (register r)
-  |Spilled(n) -> (ind ~ofs:n (rsp))
+  |Spilled(n) -> (ind ~ofs:n (rbp))
 
 
 let rec lin g l =

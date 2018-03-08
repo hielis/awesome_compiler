@@ -126,7 +126,11 @@ let color graph live_map =
          Register.M.add v {prefs = Register.S.map __map_replace edge.prefs;
                            intfs = Register.S.map __map_replace edge.intfs;} acc
        in
-       let g2 = Register.M.remove v1 (Register.M.add v2 {prefs = Register.S.union (Register.S.remove v2 e1.prefs) (Register.S.remove v1 e2.prefs);intfs = Register.S.union (Register.S.remove v2 e1.intfs) (Register.S.remove v1 e2.intfs)} g) in
+       let interf = Register.S.union (Register.S.remove v2 e1.intfs) (Register.S.remove v1 e2.intfs) in
+       let __fold_remove_intfs_from_prefs vertice acc =
+         if(Register.S.mem vertice interf) then acc else Register.S.add vertice acc
+       in
+       let g2 = Register.M.remove v1 (Register.M.add v2 {prefs = Register.S.fold __fold_remove_intfs_from_prefs (Register.S.union (Register.S.remove v2 e1.prefs) (Register.S.remove v1 e2.prefs)) Register.S.empty;intfs = interf} g) in
        Register.M.fold __fold_replace g2 Register.M.empty
       )
     else g
@@ -180,7 +184,10 @@ let color graph live_map =
     |None->freeze k g
     |Some(v1,v2)-> let u1,u2 = if (Register.is_hw v1) then v2,v1 else v1,v2 in
                    let c = simplify k (fusionner g u1 u2) in
-                   Register.M.add u1 (Register.M.find u2 c) c
+                   if (Register.is_hw u1 && List.mem u1 Register.parameters) then
+                     Register.M.add u1 (Reg(u1)) c
+                   else 
+                     Register.M.add u1 (Register.M.find u2 c) c
                    
   and freeze k g =
     let __find_vertice v edge acc =
@@ -231,7 +238,7 @@ let color graph live_map =
     let edges = Register.M.find v g in
     let color_set = (*Register.S.fold __find_color edges.prefs *)(Register.S.fold __find_color edges.intfs colors) in
     let couleur = try (Reg (if (Register.S.mem v color_set) then v else Register.S.min_elt color_set))
-                  with Not_found -> Spilled (8*(1+get_spill ()))
+                  with Not_found -> Spilled (-8*(get_spill ()))
     in
     Register.M.add v couleur c
 
@@ -243,10 +250,9 @@ let deffun (df:Ertltree.deffun) =
   let live_map = liveness df.fun_body in
   let c,space = color (make (live_map)) live_map in
   let lookup r = 
-    if (Register.is_hw r) && List.mem r Register.parameters then Reg(r)
-    else Register.M.find r c in
+    (*if (Register.is_hw r) && List.mem r Register.parameters then Reg(r)
+    else*) Register.M.find r c in
   let graph = ref Label.M.empty in
-  (*let locals_reg = ref df.fun_locals in*)
   let add_to_graph l i =
     graph := Label.M.add l i !graph;
   in
@@ -337,7 +343,7 @@ let deffun (df:Ertltree.deffun) =
     |Ecall(id,n,l) -> Ecall(id,l)
     |Ealloc_frame(l) -> let l2 = Label.fresh() in
                         let l3 = Label.fresh() in
-                        add_to_graph l2 (Emunop(Maddi(Int32.of_int((-space))), Reg(Register.rbp), l));
+                        add_to_graph l2 (Emunop(Maddi(Int32.of_int((-space))), Reg(Register.rsp), l));
                         add_to_graph l3 (Embinop(Mmov, Reg(Register.rsp), Reg(Register.rbp), l2));
                         Epush(Reg(Register.rbp), l3);
     |Edelete_frame(l) -> let l2 = Label.fresh() in

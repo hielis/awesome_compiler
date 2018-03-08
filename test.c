@@ -7,7 +7,7 @@ int fact(int n) {
 int main() {
   int n;
   n = 0;
-  fact(3);
+  putchar(48 + fact(3));
   putchar(10);
   return 0;
 }
