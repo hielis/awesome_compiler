@@ -55,7 +55,7 @@ let make live_map =
                            else
                              Register.M.update r (__add_intf r1) (Register.M.update r1 (__add_intf r) g)
                          in Register.S.fold __fold_outs info.outs graph
-    |Emubranch(_,r1,_,_)-> let __fold_outs r g =
+    (*|Emubranch(_,r1,_,_)-> let __fold_outs r g =
                              if (r = r1) then g
                              else
                                Register.M.update r (__add_intf r1) (Register.M.update r1 (__add_intf r) g)
@@ -64,7 +64,7 @@ let make live_map =
                                if (r = r1) then g
                                else
                                  Register.M.update r (__add_intf r1) (Register.M.update r1 (__add_intf r) g)
-                             in Register.S.fold __fold_outs info.outs graph
+                             in Register.S.fold __fold_outs info.outs graph*)
     |Eget_param(_,r1,_)-> let __fold_outs r g =
                             if (r = r1) then g
                             else
@@ -243,7 +243,7 @@ let deffun (df:Ertltree.deffun) =
   let live_map = liveness df.fun_body in
   let c,space = color (make (live_map)) live_map in
   let lookup r = 
-    if Register.is_hw r then Reg(r)
+    if (Register.is_hw r) && List.mem r Register.parameters then Reg(r)
     else Register.M.find r c in
   let graph = ref Label.M.empty in
   (*let locals_reg = ref df.fun_locals in*)
