@@ -27,7 +27,7 @@ let options =
      "  interprets RTL (and does not compile)";
    "--interp-ertl", Arg.Set interp_ertl,
      "  interprets ERTL (and does not compile)";
-   "--interp-ltl", Arg.Set interp_ertl,
+   "--interp-ltl", Arg.Set interp_ltl,
      "  interprets LTL (and does not compile)";
    "--debug", Arg.Set debug,
      "  debug mode";
