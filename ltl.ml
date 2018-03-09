@@ -182,7 +182,7 @@ let color graph live_map =
     in
     match (Register.M.fold __fold_pref_edge g None) with
     |None->freeze k g
-    |Some(v1,v2)-> let u1,u2 = if (Register.is_hw v1) then v2,v1 else v1,v2 in
+    |Some(v1,v2)-> let u1,u2 = if ((Register.is_hw v1)&&(v2<>Register.rax)) then v2,v1 else v1,v2 in
                    let c = simplify k (fusionner g u1 u2) in
                    Register.M.add u1 (Register.M.find u2 c) c
                    
@@ -241,7 +241,14 @@ let color graph live_map =
 
   in
   let c = simplify (Register.S.cardinal colors) graph in
-  (c,8*(necessary_space ()))
+  let crax = Register.M.find (Register.rax) c in
+  let __fold_swap v col acc =
+    match col with
+    |Reg(p) when p=Register.rax -> Register.M.add v crax acc
+    |a when a=crax->Register.M.add v (Reg(Register.rax)) acc
+    |_->Register.M.add v col acc
+  in
+  (Register.M.fold __fold_swap c Register.M.empty,8*(necessary_space ()))
 
 let deffun (df:Ertltree.deffun) =
   let live_map = liveness df.fun_body in
@@ -388,8 +395,6 @@ let deffun (df:Ertltree.deffun) =
 let program (p:Ertltree.file) =
   {funs = List.map deffun p.funs}
                                   
-                                  
-  
 open Format
 open Pp
    
