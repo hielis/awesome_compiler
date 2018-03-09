@@ -184,10 +184,7 @@ let color graph live_map =
     |None->freeze k g
     |Some(v1,v2)-> let u1,u2 = if (Register.is_hw v1) then v2,v1 else v1,v2 in
                    let c = simplify k (fusionner g u1 u2) in
-                   if (Register.is_hw u1 && List.mem u1 Register.parameters) then
-                     Register.M.add u1 (Reg(u1)) c
-                   else 
-                     Register.M.add u1 (Register.M.find u2 c) c
+                   Register.M.add u1 (Register.M.find u2 c) c
                    
   and freeze k g =
     let __find_vertice v edge acc =
