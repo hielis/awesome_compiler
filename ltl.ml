@@ -5,7 +5,7 @@ open Ltltree;;
 
 type arcs = {prefs: Register.set; intfs: Register.set}
 type igraph = arcs Register.map
-           
+(*
 let make live_map =
   let __fold_pref key info graph =
     match info.instr with
@@ -78,6 +78,52 @@ let make live_map =
     |_-> graph
   in
   Label.M.fold __fold_intf live_map (Label.M.fold __fold_pref live_map Register.M.empty)
+*)
+
+
+
+let make live_map =
+  let graph = ref Register.M.empty in
+  let add_pref l i = match i.instr with
+    |Embinop(op, r1, r2, l) when op = Mmov-> 
+      (match Register.M.find_opt r1 !graph with
+       |Some(a) -> graph := Register.M.add r1 {prefs = Register.S.add r2 a.prefs; intfs = a.intfs} !graph 
+       |None -> graph := Register.M.add r1 {prefs = Register.S.singleton r2;
+                                            intfs = Register.S.empty} !graph;);
+      (match Register.M.find_opt r2 !graph with
+       |Some(a) -> graph := Register.M.add r2 {prefs = Register.S.add r1 a.prefs; intfs = a.intfs} !graph 
+       |None -> graph := Register.M.add r2 {prefs = Register.S.singleton r1;
+                                                                                   intfs = Register.S.empty} !graph;);
+    |_-> ()
+  in
+  Label.M.iter add_pref live_map;
+  let add_intfs l i = 
+    let intfs r1 r2 = 
+      (match Register.M.find_opt r1 !graph with
+       |Some(a) -> graph := Register.M.add r1 {prefs =  Register.S.remove r2 a.prefs; intfs = Register.S.add r2 a.intfs} !graph 
+       |None -> graph := Register.M.add r1 {prefs = Register.S.empty;
+                                            intfs = Register.S.singleton r2} !graph;);
+       (match Register.M.find_opt r2 !graph with
+       |Some(a) -> graph := Register.M.add r2 {prefs =  Register.S.remove r1 a.prefs; intfs = Register.S.add r1 a.intfs} !graph 
+       |None -> graph := Register.M.add r2 {prefs = Register.S.empty;
+                                            intfs = Register.S.singleton r1} !graph;);
+    in
+    match i.instr with
+     | Econst(c, r, l) -> Register.S.iter (intfs r) i.outs
+     | Eload(r1, n, r2, l) ->  Register.S.iter (intfs r1) i.outs;  Register.S.iter (intfs r2) i.outs;
+     | Estore(r1, r2, n, l) -> Register.S.iter (intfs r1) i.outs;  Register.S.iter (intfs r2) i.outs;
+     | Emunop(op, r, l) -> Register.S.iter (intfs r) i.outs
+     | Embinop(op, r1, r2, l) when op <> Mmov -> Register.S.iter (intfs r1) i.outs;  Register.S.iter (intfs r2) i.outs;
+     | Emubranch(op, r, l1, l2) ->  Register.S.iter (intfs r) i.outs
+     | Embbranch(op, r1, r2, l1, l2) -> Register.S.iter (intfs r1) i.outs;  Register.S.iter (intfs r2) i.outs;
+     | Eget_param(n, r, l) -> Register.S.iter (intfs r) i.outs
+     | Epush_param(r, l) ->Register.S.iter (intfs r) i.outs
+     |_ -> ()
+  in
+  Label.M.iter add_intfs live_map;
+  !graph
+;;
+
 
 type color = Ltltree.operand
 type coloring = color Register.map
