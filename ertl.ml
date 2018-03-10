@@ -41,7 +41,8 @@ let deffun (df:Rtltree.deffun) =
         l
       in List.fold_left __fold
     in
-    let __save_caller =
+(*  
+  let __save_caller =
       let __fold lbl reg arg =
         let l = Label.fresh () in
         add_to_graph l (Embinop(Mmov, reg, arg, lbl));
@@ -58,7 +59,7 @@ let deffun (df:Rtltree.deffun) =
     in
     let local_reg = List.rev_map __generate_new_register Register.caller_saved in
     let rev_caller = List.rev Register.caller_saved in
-    
+*)    
     let __unstack_args lbldest = function
     |0->lbldest
     |i->let lbl = Label.fresh () in
@@ -67,16 +68,16 @@ let deffun (df:Rtltree.deffun) =
     in
         
     let(first_arg, i, l1, j, l2) = __toreg_tostack l in
-    let lbl = __restore_caller lbl_ret local_reg rev_caller in
-    let lbl2 = __unstack_args lbl j in
+    (*let lbl = __restore_caller lbl_ret local_reg rev_caller in*)
+    let lbl2 = __unstack_args lbl_ret j in
     let lbl3 = Label.fresh() in
     add_to_graph lbl3 (Embinop(Mmov, Register.result, r, lbl2));
     let lbl4 = Label.fresh() in
     add_to_graph lbl4 (Ecall(id, i, lbl3));
     let lbl5 = __store_in_stack lbl4 l2 in
     let lbl6 = __store_in_registers lbl5 l1 (List.rev (Register.parameters)) in
-    let lbl7 = __save_caller lbl6 rev_caller local_reg in
-    Egoto(lbl7);
+   (* let lbl7 = __save_caller lbl6 rev_caller local_reg in*)
+    Egoto(lbl6);
       
     
   in

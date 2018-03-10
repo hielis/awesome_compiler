@@ -98,7 +98,7 @@ let make live_map =
   in
   Label.M.iter add_pref live_map;
   let add_intfs l i = 
-    let intfs r1 r2 = 
+    let intfs r1 r2 = if r1 = r2 then () else
       (match Register.M.find_opt r1 !graph with
        |Some(a) -> graph := Register.M.add r1 {prefs =  Register.S.remove r2 a.prefs; intfs = Register.S.add r2 a.intfs} !graph 
        |None -> graph := Register.M.add r1 {prefs = Register.S.empty;
@@ -128,180 +128,167 @@ let make live_map =
 type color = Ltltree.operand
 type coloring = color Register.map
 
-let colors = Register.allocatable;;
 
-let color graph live_map =
-  let costtbl = Hashtbl.create 32 in
+let color g =
+  let rec registers_to_do_aux l a s = match a.instr with
+  | Econst(c, r, l) when (Register.is_pseudo r)->
+     (Register.S.add r s)
+  | Eload(r1, n, r2, l) -> 
+     (match Register.is_pseudo r1, Register.is_pseudo r2 with
+      |true, true -> Register.S.add r2 (Register.S.add r1 s)
+      |true, false -> (Register.S.add r1 s)
+      |false, true -> (Register.S.add r2 s)
+      |_ -> s)
+  | Estore(r1, r2, n, l) ->
+     (match Register.is_pseudo r1, Register.is_pseudo r2 with
+      |true, true -> Register.S.add r2 (Register.S.add r1 s)
+      |true, false -> (Register.S.add r1 s)
+      |false, true -> (Register.S.add r2 s)
+      |_ -> s)
+  | Emunop(op, r, l) when (Register.is_pseudo r)->
+     (Register.S.add r s)
+  | Embinop(op, r1, r2, l) ->
+     (match Register.is_pseudo r1, Register.is_pseudo r2 with
+      |true, true -> Register.S.add r2 (Register.S.add r1 s)
+      |true, false -> (Register.S.add r1 s)
+      |false, true -> (Register.S.add r2 s)
+      |_ -> s)
+  | Emubranch(op, r, l1, l2) when (Register.is_pseudo r)->
+     Register.S.add r s
+  | Embbranch(op, r1, r2, l1, l2) ->
+      (match Register.is_pseudo r1, Register.is_pseudo r2 with
+       |true, true -> Register.S.add r2 (Register.S.add r1 s)
+       |true, false -> (Register.S.add r1 s)
+       |false, true -> (Register.S.add r2 s)
+       |_ -> s)
+  | Eget_param(n, r, l) when (Register.is_pseudo r)->
+     (Register.S.add r s)
+  | Epush_param(r, l) when (Register.is_pseudo r)->
+     (Register.S.add r s)
 
-  let stream = Stream.from (fun i -> Some(i+1)) in
-  let get_spill () = Stream.next stream in
-  let necessary_space () = Stream.count stream in
-  
-
-  let fill_costtbl lm =
-    let __iter key info =
-      let __add reg =
-        match Hashtbl.find_opt costtbl reg with
-        |None-> Hashtbl.add costtbl reg 1.0
-        |Some(i)-> Hashtbl.replace costtbl reg (i +. 1.0)
-      in
-      match info.instr with
-      |Econst(_,r1,_)-> __add r1
-      |Eload(r2,_,r1,_)-> __add r2; __add r1
-      |Estore(r2,r1,_,_)-> __add r2; __add r1
-      |Emunop(_,r1,_)->  __add r1
-      |Embinop(_,r2,r1,_)->  __add r2; __add r1
-      |Emubranch(_,r1,_,_)-> __add r1
-      |Embbranch(_,r2,r1,_,_)-> __add r2; __add r1
-      |Eget_param(_,r1,_)-> __add r1
-      |Epush_param(r1,_)->  __add r1
-      |_-> ()
-    in
-    Label.M.iter __iter lm
+  | _ -> s
   in
-  fill_costtbl live_map;
-  
-  let fusionner g v1 v2 =
-    if (v1<>v2) then
-      (let e1 = Register.M.find v1 g and e2 = Register.M.find v2 g in
-       Hashtbl.replace costtbl v2 ((Hashtbl.find costtbl v1) +. (Hashtbl.find costtbl v2)); 
-       let __fold_replace v edge acc =
-         let __map_replace vaux =
-           if (vaux=v1) then v2 else vaux
-         in
-         Register.M.add v {prefs = Register.S.map __map_replace edge.prefs;
-                           intfs = Register.S.map __map_replace edge.intfs;} acc
-       in
-       let interf = Register.S.union (Register.S.remove v2 e1.intfs) (Register.S.remove v1 e2.intfs) in
-       let __fold_remove_intfs_from_prefs vertice acc =
-         if(Register.S.mem vertice interf) then acc else Register.S.add vertice acc
-       in
-       let g2 = Register.M.remove v1 (Register.M.add v2 {prefs = Register.S.fold __fold_remove_intfs_from_prefs (Register.S.union (Register.S.remove v2 e1.prefs) (Register.S.remove v1 e2.prefs)) Register.S.empty;intfs = interf} g) in
-       Register.M.fold __fold_replace g2 Register.M.empty
+  let to_do = ref (Label.M.fold registers_to_do_aux g Register.S.empty) in
+  let graph = ref (make g) in
+  let tbl_colors = ref Register.M.empty in
+  let tmp = Hashtbl.create 257 in
+  let colors = ref Register.allocatable in
+  let n = ref 8 in
+  let add_binding r c =
+    tbl_colors := Register.M.add r c !tbl_colors;
+  in
+  let remove_register r =
+    to_do := Register.S.remove r !to_do;
+  in
+  let init_tbl r =
+    let s = Register.M.find r !graph in
+    Hashtbl.add tmp r (Register.S.diff !colors s.intfs);
+  in
+  Register.S.iter init_tbl !to_do;
+  let find_singleton () =
+    let rec aux = function 
+      |[] -> None
+      |a::tl -> let s = Hashtbl.find tmp a in 
+        if (Register.S.cardinal (s) = 1) then 
+          (
+            let c = List.hd (Register.S.elements s) in
+            Some(a, c))
+        else (aux tl)
+    in
+    aux (Register.S.elements !to_do)
+  in
+  let find_singleton_with_pref () =
+    let rec aux = function
+      |[] -> None
+      |a::tl -> 
+        let s = Hashtbl.find tmp a in
+        if (Register.S.cardinal (s) = 1) then
+          (let c = List.hd (Register.S.elements s) in
+           let h = Register.M.find a !graph in
+           if (Register.S.mem c h.prefs) then Some(a, c)
+           else (aux tl)
+          )
+        else (aux tl)
+    in
+    aux (Register.S.elements !to_do)
+  in
+  let find_register_with_binded_pref () =
+    let has_a_binding r =
+        let s = Register.M.find r !graph in
+        let test e = (Register.M.mem e !tbl_colors) in
+        (Register.S.find_first_opt test s.prefs)
+    in
+    let rec aux = function
+      |[] -> None
+      |a::tl -> (
+        match has_a_binding a with
+        |Some(r) -> Some(a, (Register.M.find r !tbl_colors))
+        |None -> aux tl
       )
-    else g
+    in
+    aux (Register.S.elements !to_do)
   in
-  
-  let rec simplify k g =
-    let __find_vertice v edge acc =
-      if (Register.S.is_empty edge.prefs) then
-        let c = Register.S.cardinal edge.intfs in
-        if(c<k) then
-          match acc with
-          |None->Some(v,c)
-          |Some(v2,i)->if (c<i) then Some(v,c) else acc
-        else
-          acc
-      else
-        acc
+  let find_register_with_one_color () =
+    let has_mtoc r =
+     let s = Hashtbl.find tmp r in
+     (Register.S.cardinal s > 0)
     in
-    match Register.M.fold __find_vertice g None with
-    |None-> coalesce k g
-    |Some(v,i)-> select k g v
-               
-  and coalesce k g =
-    let __satisfies_george_criteria v1 v2 =
-      let e1 = Register.M.find v1 g and e2 = Register.M.find v2 g in
-      if (Register.is_pseudo v2) then
-        let __fold v acc =
-          let edge = Register.M.find v g in
-          acc && ((Register.is_pseudo v && ((Register.S.cardinal edge.prefs) + (Register.S.cardinal edge.intfs) < k))||((Register.S.mem v e2.prefs) || (Register.S.mem v e2.intfs)))
-        in
-        Register.S.fold __fold e1.prefs (Register.S.fold __fold e1.intfs true)
-      else
-        let __fold v acc =
-          let edge = Register.M.find v g in
-          acc && ((Register.is_hw v && ((Register.S.cardinal edge.prefs) + (Register.S.cardinal edge.intfs) < k))||((Register.S.mem v e2.prefs) || (Register.S.mem v e2.intfs)))
-        in
-        Register.S.fold __fold e1.prefs (Register.S.fold __fold e1.intfs true)  
-        
-    in
-    let __fold_pref_edge v edges = function
-      |Some(v1,v2) as acc->acc
-      |None-> let __fold_aux v2 acc =
-                if (__satisfies_george_criteria v v2) then
-                  Some(v,v2)
-                else
-                  acc
-              in
-              Register.S.fold __fold_aux edges.prefs None
-    in
-    match (Register.M.fold __fold_pref_edge g None) with
-    |None->freeze k g
-    |Some(v1,v2)-> let u1,u2 = if ((Register.is_hw v1)&&(v2<>Register.rax)) then v2,v1 else v1,v2 in
-                   let c = simplify k (fusionner g u1 u2) in
-                   Register.M.add u1 (Register.M.find u2 c) c
-                   
-  and freeze k g =
-    let __find_vertice v edge acc =
-      let l = (Register.S.cardinal edge.prefs) + (Register.S.cardinal edge.intfs) in
-      if (l<k) then
-        match acc with
-        |None -> Some(v,l)
-        |Some(v2,l2) -> if (l<l2) then Some(v,l) else acc
-      else
-        acc
-    in
-    match Register.M.fold __find_vertice g None with
-    |None -> spill k g
-    |Some(v,_) -> let __remove_pref key e acc =
-                     if (key=v) then
-                       Register.M.add v {prefs = Register.S.empty; intfs = e.intfs} acc
-                     else
-                       Register.M.add key {prefs = Register.S.remove v e.prefs; intfs = e.intfs} acc
-                   in
-                   simplify k (Register.M.fold __remove_pref g Register.M.empty)
+    match Register.S.find_first_opt has_mtoc !to_do with
+    |None -> None
+    |Some(r) -> 
+      let s = Hashtbl.find tmp r in
+      Some(r, Reg(Register.S.max_elt s))
+  in
 
-  and spill k g =
-    if (Register.M.is_empty g) then
-      Register.M.empty
-    else
-      let __fold_minimal v edge acc =
-        let c = (Hashtbl.find costtbl v) /. (Pervasives.float_of_int ((Register.S.cardinal edge.prefs) + (Register.S.cardinal edge.intfs))) in
-        match acc with
-        |None->Some(v,c)
-        |Some(v2,c2)-> if (c<c2) then Some(v,c) else acc
+  let update_tbl r d =
+    match d with
+    |Spilled(n) -> ()
+    |Reg(c) ->
+      let m = Register.M.find r !graph in
+      let aux reg s =
+        if (Register.S.mem reg m.intfs) then Some(Register.S.remove c s)
+        else Some(s)
       in
-      match Register.M.fold __fold_minimal g None with
-      |None->failwith "Should be some dead code"
-      |Some(v,_)->select k g v
-
-  and select k g v =
-    let __fold_remove vaux edge acc =
-      Register.M.add vaux {prefs = Register.S.remove v edge.prefs; intfs = Register.S.remove v edge.intfs} acc
-    in
-    
-    let c = simplify k (Register.M.fold __fold_remove (Register.M.remove v g) Register.M.empty) in
-    let __find_color v available_colors =
-      try (match (Register.M.find v c) with
-           |Reg(r)->Register.S.remove r available_colors
-           |Spilled(_)->available_colors)
-      with Not_found -> available_colors
-    in
-    let edges = Register.M.find v g in
-    let color_set = (*Register.S.fold __find_color edges.prefs *)(Register.S.fold __find_color edges.intfs colors) in
-    let couleur = try (Reg (if (Register.S.mem v color_set) then v else Register.S.min_elt color_set))
-                  with Not_found -> Spilled (-8*(get_spill ()))
-    in
-    Register.M.add v couleur c
-
+      Hashtbl.filter_map_inplace aux tmp;
   in
-  let c = simplify (Register.S.cardinal colors) graph in
-  let crax = Register.M.find (Register.rax) c in
-  let __fold_swap v col acc =
-    match col with
-    |Reg(p) when p=Register.rax -> Register.M.add v crax acc
-    |a when a=crax->Register.M.add v (Reg(Register.rax)) acc
-    |_->Register.M.add v col acc
+  let put_color r c =
+    remove_register r;
+    add_binding r c;
+    update_tbl r c;
   in
-  (Register.M.fold __fold_swap c Register.M.empty,8*(necessary_space ()))
+
+  let rec loop () = match Register.S.is_empty !to_do with
+    |true -> ()
+    |_ ->
+      (match find_singleton_with_pref () with
+       |Some(r, c) -> put_color r (Reg(c))
+       |None ->
+         (match find_singleton () with
+          |Some(r, c) -> put_color r (Reg(c))
+          |None -> 
+            (match find_register_with_binded_pref () with
+             |Some(r, c) -> put_color r c
+             |None -> 
+               (match find_register_with_one_color () with
+                |Some(r, c) -> put_color r c
+                |None -> put_color (Register.S.max_elt !to_do) (Spilled(-(!n)));
+                         n := !n + 8;
+               )
+            )
+         )
+      );
+     loop ();
+  in
+  loop ();
+  (!tbl_colors, !n - 8)
+;;
 
 let deffun (df:Ertltree.deffun) =
   let live_map = liveness df.fun_body in
-  let c,space = color (make (live_map)) live_map in
+  let c,space = color live_map in
   let lookup r = 
-    (*if (Register.is_hw r) && List.mem r Register.parameters then Reg(r)
-    else*) Register.M.find r c in
+    if (Register.is_hw r) then Reg(r)
+    else Register.M.find r c in
   let graph = ref Label.M.empty in
   let add_to_graph l i =
     graph := Label.M.add l i !graph;
@@ -461,7 +448,7 @@ let print cm =
   
 let print_deffun_colors (f: Ertltree.deffun) =
   let l = liveness f.fun_body in
-  let c,_ = (color (make l)) l in
+  let c,_ = color  l in
   print c
   
 let print_ltl fmt (p: Ertltree.file) =
