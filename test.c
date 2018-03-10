@@ -1,6 +1,6 @@
 /* arbres binaires de recherche */
 
-struct ABR {
+/*struct ABR {
   int valeur;
   struct ABR *gauche,*droite;
 };
@@ -37,7 +37,7 @@ int contient(struct ABR *a, int x) {
   return 0;
 }
 
-/*int print_int(int n) {
+int print_int(int n) {
   int q;
   q = n / 10;
   if (n > 9) print_int(q);
@@ -51,7 +51,7 @@ int print(struct ABR *a) {
   print_int(a->valeur);
   if (a->droite != 0) print(a->droite);
   return putchar(')');
-  }*/
+  }
 
 int main() {
   struct ABR *dico;
@@ -74,4 +74,18 @@ int main() {
   putchar(10);
   return 0;
 }
+
+*/
+
+int fact(int n) {
+  if (n <= 1) return 1;
+  return n * fact(n-1);
+}
+
+int main() {
+  putchar(fact(3) + '0');
+  putchar(10);
+  return 0;
+  }
+
 

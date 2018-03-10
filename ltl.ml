@@ -5,7 +5,7 @@ open Ltltree;;
 
 type arcs = {prefs: Register.set; intfs: Register.set}
 type igraph = arcs Register.map
-           
+
 let make live_map =
   let __fold_pref key info graph =
     match info.instr with
@@ -82,8 +82,183 @@ let make live_map =
 type color = Ltltree.operand
 type coloring = color Register.map
 
-let colors = Register.allocatable;;
+(*let colors = Register.allocatable;;*)
 
+exception Edge of Register.t * Register.t
+                
+let color graph live_map =
+  let h = Hashtbl.create 129 in
+
+  let __fill_hashtable lbl info col =
+    let __add reg acc =
+      match Hashtbl.find_opt h reg with
+      |None-> Hashtbl.add h reg 1.0; if (Register.is_hw reg) then Register.S.add reg acc else acc
+      |Some(i)-> Hashtbl.replace h reg (i +. 1.0); acc
+    in
+    match info.instr with
+    |Econst(_,r1,_)-> __add r1 col
+    |Eload(r2,_,r1,_)-> __add r2 (__add r1 col)
+    |Estore(r2,r1,_,_)-> __add r2 (__add r1 col)
+    |Emunop(_,r1,_)->  __add r1 col
+    |Embinop(_,r2,r1,_)->  __add r2 (__add r1 col)
+    |Emubranch(_,r1,_,_)-> __add r1 col
+    |Embbranch(_,r2,r1,_,_)-> __add r2 (__add r1 col)
+    |Eget_param(_,r1,_)-> __add r1 col
+    |Epush_param(r1,_)->  __add r1 col
+    |_-> col
+  in
+  let colors = Label.M.fold __fill_hashtable live_map Register.S.empty in  
+  let __reserve_hw reg acc =
+    Register.M.add reg (Reg(reg)) acc
+  in
+  let initial_cmap = Register.S.fold __reserve_hw colors Register.M.empty in
+  let find_minimal_cost g =
+    let __fold v e current =
+      let cost = (Hashtbl.find h v) /. Pervasives.float_of_int (Register.S.cardinal (Register.S.union e.prefs e.intfs)) in
+      match current with
+      |None->Some(v,cost)
+      |Some(v2,c2) when cost<c2 -> Some(v,cost)
+      |_->current
+    in
+    Register.M.fold __fold g None
+  in
+
+  let stream = Stream.from (fun i -> Some(i+1)) in
+  let get_spill () = -8*(Stream.next stream) in
+  let necessary_space () = 8*Stream.count stream in
+  
+  let find_minimaldegree k g =
+    let __fold_aux vertice edge found =
+      let cardinal = Register.S.cardinal (Register.S.union edge.prefs edge.intfs)  in
+      if(cardinal < k) then
+        match found with
+        |None->Some(vertice, edge, cardinal)
+        |Some(vert, e, card)->if(cardinal < card) then Some(vertice, edge, cardinal) else found
+      else found
+    in Register.M.fold __fold_aux g None
+  in
+  
+  let find_nopref_minimaldegree k g =
+    let __fold_aux vertice edge found =
+      let cardinal = Register.S.cardinal edge.intfs in
+      if(Register.S.is_empty edge.prefs && cardinal < k) then
+        match found with
+        |None->Some(vertice, cardinal)
+        |Some(vert, card)->if(cardinal < card) then Some(vertice, cardinal) else found
+      else found
+    in Register.M.fold __fold_aux g None
+  in
+
+  let satisfies_george_criteria k g =
+    let __search vertice edge =
+      let __test v2 =
+        let e2 = Register.M.find v2 g in
+        if(Register.is_pseudo v2) then
+          let __verify_neighbour vaux =
+            let eaux = Register.M.find vaux g in 
+            (not((Register.is_hw vaux)||((Register.S.cardinal eaux.prefs) + (Register.S.cardinal eaux.intfs) >= k)))||(Register.S.mem vaux (Register.S.union e2.prefs e2.intfs))
+          in
+          Register.S.for_all __verify_neighbour (Register.S.union edge.prefs edge.intfs) 
+        else
+          let __verify_neighbour vaux =
+            let eaux = Register.M.find vaux g in 
+            (not((Register.is_pseudo vaux)||((Register.S.cardinal eaux.prefs) + (Register.S.cardinal eaux.intfs) >= k)))||(Register.S.mem vaux (Register.S.union e2.prefs e2.intfs))
+          in
+          Register.S.for_all __verify_neighbour (Register.S.union edge.prefs edge.intfs) 
+      
+      in
+      try(raise (Edge(vertice, Register.S.find_first __test edge.prefs))) with |Not_found->() 
+    in
+    Register.M.iter __search g
+  in
+
+  let fusionner g v1 v2 =
+    Hashtbl.replace h v2 ((Hashtbl.find h v1) +. (Hashtbl.find h v2));
+    let e1 = Register.M.find v1 g and e2 = Register.M.find v2 g in
+    let interferences = Register.S.remove v1 (Register.S.remove v2 (Register.S.union e1.intfs e2.intfs)) in
+    let pref_tmp = Register.S.remove v1 (Register.S.remove v2 (Register.S.union e1.intfs e2.intfs)) in
+    let __remove r set =
+      Register.S.remove r set
+    in
+    let preferences = Register.S.fold __remove interferences pref_tmp in
+    let g_tmp = Register.M.add v2 {prefs = preferences; intfs = interferences} (Register.M.remove v1 g) in
+    let __replace_in_intfs_and_prefs vaux eaux acc =
+      let i = if(Register.S.mem v1 eaux.intfs) then
+                Register.S.add v2 (Register.S.remove v1 eaux.intfs)
+              else eaux.intfs
+      in
+      let p = if(Register.S.mem v1 eaux.prefs) then
+                Register.S.remove v1 (if(Register.S.mem v2 i) then Register.S.remove v2 eaux.prefs else Register.S.add v2 eaux.prefs)
+              else
+                if(Register.S.mem v2 i) then Register.S.remove v2 eaux.prefs else eaux.prefs
+      in
+      Register.M.add vaux {prefs = p; intfs = i} acc
+    in
+    Register.M.fold __replace_in_intfs_and_prefs g_tmp Register.M.empty
+  in
+              
+  let george_appel card gr =
+    let rec simplify k g =
+      match find_nopref_minimaldegree k g with
+      |None->coalesce k g
+      |Some(v,i)-> select k g v
+    
+    and coalesce k g =
+      try (satisfies_george_criteria k g; freeze k g)
+      with Edge(v1,v2)-> (let u1,u2 = if(Register.is_pseudo v2 || v1=Register.rax) then
+                                        v2,v1 else v1,v2
+                          in
+                          let c = simplify k (fusionner g u1 u2) in
+                          Register.M.add u1 (Register.M.find u2 c) c)
+
+    and freeze k g =
+      match find_minimaldegree k g with
+      |None->spill k g
+      |Some(v,e,i)->let __forget_prefs vaux eaux tmp_graph =
+                    Register.M.add vaux {prefs = Register.S.remove v eaux.prefs; intfs = eaux.intfs} tmp_graph
+                  in
+                  simplify k (Register.M.fold __forget_prefs (Register.M.remove v g) (Register.M.singleton v {prefs = Register.S.empty ; intfs = e.intfs}))
+
+    and spill k g =
+      match find_minimal_cost g with
+      |None-> initial_cmap(*Register.M.empty*)
+      |Some(v,_)-> select k g v
+
+    and select k g v =
+      let e = Register.M.find v g in
+      let __forget va ea tmp =
+        Register.M.add va {prefs = Register.S.remove v ea.prefs; intfs = Register.S.remove v ea.intfs} tmp
+      in
+      let c = simplify k (Register.M.fold __forget (Register.M.remove v g) Register.M.empty) in
+      let possible_color =
+        let __find_colors vaux available =
+          match (Register.M.find vaux c) with
+          |Reg(r) -> Register.S.remove r available
+          |_->available
+        in
+        let list = Register.S.fold __find_colors e.intfs colors in
+        let __get_pref_color vaux =
+          match Register.M.find vaux c with
+          |Reg(r) -> Register.S.mem r list
+          |_-> false
+        in
+        try (Register.M.find (Register.S.find_first __get_pref_color e.prefs) c)
+        with Not_found -> if(Register.S.mem v list) then Reg(v)
+                          else (try Reg(Register.S.choose list)
+                                with Not_found -> Spilled(get_spill()))
+      in
+      Register.M.add v possible_color c
+
+    in
+    simplify card gr
+  in
+  let colored_graph = george_appel (Register.S.cardinal colors) (* graph*) (Register.S.fold Register.M.remove colors graph) in
+  (colored_graph,necessary_space ())
+                           
+                                  
+    
+  
+(*
 let color graph live_map =
   let costtbl = Hashtbl.create 32 in
 
@@ -210,7 +385,7 @@ let color graph live_map =
     if (Register.M.is_empty g) then
       Register.M.empty
     else
-      let __fold_minimal v edge acc =
+      let __fold_minimal v eqdge acc =
         let c = (Hashtbl.find costtbl v) /. (Pervasives.float_of_int ((Register.S.cardinal edge.prefs) + (Register.S.cardinal edge.intfs))) in
         match acc with
         |None->Some(v,c)
@@ -221,19 +396,19 @@ let color graph live_map =
       |Some(v,_)->select k g v
 
   and select k g v =
+    let edges = Register.M.find v g in
     let __fold_remove vaux edge acc =
       Register.M.add vaux {prefs = Register.S.remove v edge.prefs; intfs = Register.S.remove v edge.intfs} acc
     in
     
     let c = simplify k (Register.M.fold __fold_remove (Register.M.remove v g) Register.M.empty) in
-    let __find_color v available_colors =
-      try (match (Register.M.find v c) with
+    let __find_color w available_colors =
+      try (match (Register.M.find w c) with
            |Reg(r)->Register.S.remove r available_colors
            |Spilled(_)->available_colors)
       with Not_found -> available_colors
     in
-    let edges = Register.M.find v g in
-    let color_set = (*Register.S.fold __find_color edges.prefs *)(Register.S.fold __find_color edges.intfs colors) in
+    let color_set = (Register.S.fold __find_color edges.intfs colors) in
     let couleur = try (Reg (if (Register.S.mem v color_set) then v else Register.S.min_elt color_set))
                   with Not_found -> Spilled (-8*(get_spill ()))
     in
@@ -249,13 +424,14 @@ let color graph live_map =
     |_->Register.M.add v col acc
   in
   (Register.M.fold __fold_swap c Register.M.empty,8*(necessary_space ()))
+ *)
+
 
 let deffun (df:Ertltree.deffun) =
   let live_map = liveness df.fun_body in
   let c,space = color (make (live_map)) live_map in
   let lookup r = 
-    (*if (Register.is_hw r) && List.mem r Register.parameters then Reg(r)
-    else*) Register.M.find r c in
+     Register.M.find r c in
   let graph = ref Label.M.empty in
   let add_to_graph l i =
     graph := Label.M.add l i !graph;

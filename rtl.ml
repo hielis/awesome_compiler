@@ -339,32 +339,71 @@ let deffun (df: decl_fun) =
   and (*in
   let rec *)rtlc exp lt lf =
     match exp.expr_node with
-    |Ebinop(b,e1,e2)-> (match b with
-                        |Band -> rtlc e1 (rtlc e2 lt lf) lf
-                        |Bor -> rtlc e1 lt (rtlc e2 lt lf)
-                        |Ble -> let reg1 = new_register () in
-                                let reg2 = new_register () in
-                                let lbl = generate (Embbranch(Mjle, reg2, reg1, lt, lf)) in
-                                let lbl2 = expr e2 reg2 lbl in
-                                expr e1 reg1 lbl2
-                        |Blt -> let reg1 = new_register () in
-                                let reg2 = new_register () in
-                                let lbl = generate (Embbranch(Mjl, reg2, reg1, lt, lf)) in
-                                let lbl2 = expr e2 reg2 lbl in
-                                expr e1 reg1 lbl2
-                        |Bge -> let reg1 = new_register () in
-                                let reg2 = new_register () in
-                                let lbl = generate (Embbranch(Mjl, reg2, reg1, lf, lt)) in
-                                let lbl2 = expr e2 reg2 lbl in
-                                expr e1 reg1 lbl2
-                        |Bgt -> let reg1 = new_register () in
-                                let reg2 = new_register () in
-                                let lbl = generate (Embbranch(Mjle, reg2, reg1, lf, lt)) in
-                                let lbl2 = expr e2 reg2 lbl in
-                                expr e1 reg1 lbl2
-                        |_ -> let reg = new_register () in
-                              let lbl = generate (Emubranch(Mjz, reg, lf, lt)) in
-                              expr exp reg lbl )
+    |Ebinop(b,e1,e2)->
+      (match e1.expr_node, e2.expr_node with
+       |Econst(n1),Econst(n2)->failwith "should not happen"
+       |Econst(n1),_ -> (match b with
+                         |Band -> rtlc e1 (rtlc e2 lt lf) lf
+                         |Bor -> rtlc e1 lt (rtlc e2 lt lf)
+                         |Ble -> let reg2 = new_register () in
+                                 let lbl = generate (Emubranch(Mjgi(Int32.add n1 (Int32.minus_one)), reg2, lt, lf)) in
+                                 expr e2 reg2 lbl
+                         |Blt -> let reg2 = new_register () in
+                                 let lbl = generate (Emubranch(Mjgi(n1), reg2, lt, lf)) in
+                                 expr e2 reg2 lbl
+                         |Bge -> let reg2 = new_register () in
+                                 let lbl = generate (Emubranch(Mjlei(n1), reg2, lt, lf)) in
+                                 expr e2 reg2 lbl
+                         |Bgt -> let reg2 = new_register () in
+                                 let lbl = generate (Emubranch(Mjlei(Int32.add n1 (Int32.minus_one)), reg2, lt, lf)) in
+                                 expr e2 reg2 lbl
+                         |_ -> let reg = new_register () in
+                               let lbl = generate (Emubranch(Mjz, reg, lf, lt)) in
+                               expr exp reg lbl )
+       |_,Econst(n2) -> (match b with
+                         |Band -> rtlc e1 (rtlc e2 lt lf) lf
+                         |Bor -> rtlc e1 lt (rtlc e2 lt lf)
+                         |Ble -> let reg1 = new_register () in
+                                 let lbl = generate (Emubranch(Mjlei(n2), reg1, lt, lf)) in
+                                 expr e1 reg1 lbl
+                         |Blt -> let reg1 = new_register () in
+                                 let lbl = generate (Emubranch(Mjlei(Int32.add n2 (Int32.minus_one)), reg1, lt, lf)) in
+                                 expr e1 reg1 lbl
+                         |Bge -> let reg1 = new_register () in
+                                 let lbl = generate (Emubranch(Mjgi(Int32.add n2 (Int32.minus_one)), reg1, lt, lf)) in
+                                 expr e1 reg1 lbl
+                         |Bgt -> let reg1 = new_register () in
+                                 let lbl = generate (Emubranch(Mjgi(n2), reg1, lt, lf)) in
+                                 expr e1 reg1 lbl
+                         |_ -> let reg = new_register () in
+                               let lbl = generate (Emubranch(Mjz, reg, lf, lt)) in
+                               expr exp reg lbl )
+       |_,_ ->(match b with
+               |Band -> rtlc e1 (rtlc e2 lt lf) lf
+               |Bor -> rtlc e1 lt (rtlc e2 lt lf)
+               |Ble -> let reg1 = new_register () in
+                       let reg2 = new_register () in
+                       let lbl = generate (Embbranch(Mjle, reg2, reg1, lt, lf)) in
+                       let lbl2 = expr e2 reg2 lbl in
+                       expr e1 reg1 lbl2
+               |Blt -> let reg1 = new_register () in
+                       let reg2 = new_register () in
+                       let lbl = generate (Embbranch(Mjl, reg2, reg1, lt, lf)) in
+                       let lbl2 = expr e2 reg2 lbl in
+                       expr e1 reg1 lbl2
+               |Bge -> let reg1 = new_register () in
+                       let reg2 = new_register () in
+                       let lbl = generate (Embbranch(Mjl, reg2, reg1, lf, lt)) in
+                       let lbl2 = expr e2 reg2 lbl in
+                       expr e1 reg1 lbl2
+               |Bgt -> let reg1 = new_register () in
+                       let reg2 = new_register () in
+                       let lbl = generate (Embbranch(Mjle, reg2, reg1, lf, lt)) in
+                       let lbl2 = expr e2 reg2 lbl in
+                       expr e1 reg1 lbl2
+               |_ -> let reg = new_register () in
+                     let lbl = generate (Emubranch(Mjz, reg, lf, lt)) in
+                     expr exp reg lbl ))
     |Eunop(u,e0)-> (match u with
                     |Unot-> rtlc e0 lf lt
                     |_-> let reg = new_register () in
