@@ -79,7 +79,7 @@ let make live_map =
   in
   Label.M.fold __fold_intf live_map (Label.M.fold __fold_pref live_map Register.M.empty)
 
-type color = Ltltree.operand
+(*type color = Ltltree.operand
 type coloring = color Register.map
 
 let colors = Register.allocatable;;
@@ -135,7 +135,7 @@ let color graph live_map =
       )
     else g
   in
-  
+
   let rec simplify k g =
     let __find_vertice v edge acc =
       if (Register.S.is_empty edge.prefs) then
@@ -249,13 +249,171 @@ let color graph live_map =
     |_->Register.M.add v col acc
   in
   (Register.M.fold __fold_swap c Register.M.empty,8*(necessary_space ()))
+ *)
+
+type color = Ltltree.operand
+type coloring = color Register.map
+
+let color g =
+  let rec registers_to_do_aux l a s = match a.instr with
+  | Econst(c, r, l) when (Register.is_pseudo r)->
+     (Register.S.add r s)
+  | Eload(r1, n, r2, l) -> 
+     (match Register.is_pseudo r1, Register.is_pseudo r2 with
+      |true, true -> Register.S.add r2 (Register.S.add r1 s)
+      |true, false -> (Register.S.add r1 s)
+      |false, true -> (Register.S.add r2 s)
+      |_ -> s)
+  | Estore(r1, r2, n, l) ->
+     (match Register.is_pseudo r1, Register.is_pseudo r2 with
+      |true, true -> Register.S.add r2 (Register.S.add r1 s)
+      |true, false -> (Register.S.add r1 s)
+      |false, true -> (Register.S.add r2 s)
+      |_ -> s)
+  | Emunop(op, r, l) when (Register.is_pseudo r)->
+     (Register.S.add r s)
+  | Embinop(op, r1, r2, l) ->
+     (match Register.is_pseudo r1, Register.is_pseudo r2 with
+      |true, true -> Register.S.add r2 (Register.S.add r1 s)
+      |true, false -> (Register.S.add r1 s)
+      |false, true -> (Register.S.add r2 s)
+      |_ -> s)
+  | Emubranch(op, r, l1, l2) when (Register.is_pseudo r)->
+     Register.S.add r s
+  | Embbranch(op, r1, r2, l1, l2) ->
+      (match Register.is_pseudo r1, Register.is_pseudo r2 with
+       |true, true -> Register.S.add r2 (Register.S.add r1 s)
+       |true, false -> (Register.S.add r1 s)
+       |false, true -> (Register.S.add r2 s)
+       |_ -> s)
+  | Eget_param(n, r, l) when (Register.is_pseudo r)->
+     (Register.S.add r s)
+  | Epush_param(r, l) when (Register.is_pseudo r)->
+     (Register.S.add r s)
+
+  | _ -> s
+  in
+  let to_do = ref (Label.M.fold registers_to_do_aux g Register.S.empty) in
+  let graph = ref (make g) in
+  let tbl_colors = ref Register.M.empty in
+  let tmp = Hashtbl.create 257 in
+  let colors = ref Register.allocatable in
+  let n = ref 0 in
+  let add_binding r c =
+    tbl_colors := Register.M.add r c !tbl_colors;
+  in
+  let remove_register r =
+    to_do := Register.S.remove r !to_do;
+  in
+  let init_tbl r =
+    let s = Register.M.find r !graph in
+    Hashtbl.add tmp r (Register.S.diff !colors s.intfs);
+  in
+  Register.S.iter init_tbl !to_do;
+  let find_singleton () =
+    let rec aux = function 
+      |[] -> None
+      |a::tl -> let s = Hashtbl.find tmp a in 
+        if (Register.S.cardinal (s) = 1) then 
+          (
+            let c::[] = Register.S.elements s in
+            Some(a, c))
+        else (aux tl)
+    in
+    aux (Register.S.elements !to_do)
+  in
+  let find_singleton_with_pref () =
+    let rec aux = function
+      |[] -> None
+      |a::tl -> 
+        let s = Hashtbl.find tmp a in
+        if (Register.S.cardinal (s) = 1) then
+          (let c::[] = Register.S.elements s in
+           let h = Register.M.find a !graph in
+           if (Register.S.mem c h.prefs) then Some(a, c)
+           else (aux tl)
+          )
+        else (aux tl)
+    in
+    aux (Register.S.elements !to_do)
+  in
+  let find_register_with_binded_pref () =
+    let has_a_binding r =
+        let s = Register.M.find r !graph in
+        let test e = (Register.M.mem e !tbl_colors) in
+        (Register.S.find_first_opt test s.prefs)
+    in
+    let rec aux = function
+      |[] -> None
+      |a::tl -> (
+        match has_a_binding a with
+        |Some(r) -> Some(a, (Register.M.find r !tbl_colors))
+        |None -> aux tl
+      )
+    in
+    aux (Register.S.elements !to_do)
+  in
+  let find_register_with_one_color () =
+    let has_mtoc r =
+     let s = Hashtbl.find tmp r in
+     (Register.S.cardinal s > 0)
+    in
+    match Register.S.find_first_opt has_mtoc !to_do with
+    |None -> None
+    |Some(r) -> 
+      let s = Hashtbl.find tmp r in
+      Some(r, Reg(Register.S.max_elt s))
+  in
+
+  let update_tbl r d =
+    match d with
+    |Spilled(n) -> ()
+    |Reg(c) ->
+      let m = Register.M.find r !graph in
+      let aux reg s =
+        if (Register.S.mem reg m.intfs) then Some(Register.S.remove c s)
+        else Some(s)
+      in
+      Hashtbl.filter_map_inplace aux tmp;
+  in
+  let put_color r c =
+    remove_register r;
+    add_binding r c;
+    update_tbl r c;
+  in
+
+  let rec loop () = match Register.S.is_empty !to_do with
+    |true -> ()
+    |_ ->
+      (match find_singleton_with_pref () with
+       |Some(r, c) -> put_color r (Reg(c))
+       |None ->
+         (match find_singleton () with
+          |Some(r, c) -> put_color r (Reg(c))
+          |None -> 
+            (match find_register_with_binded_pref () with
+             |Some(r, c) -> put_color r c
+             |None -> 
+               (match find_register_with_one_color () with
+                |Some(r, c) -> put_color r c
+                |None -> put_color (Register.S.max_elt !to_do) (Spilled(-(!n)));
+                         n := !n + 8;
+               )
+            )
+         )
+      );
+     loop ();
+  in
+loop ();
+(!tbl_colors, !n - 8)
+;;
 
 let deffun (df:Ertltree.deffun) =
   let live_map = liveness df.fun_body in
-  let c,space = color (make (live_map)) live_map in
+  let c,space = color  live_map in
   let lookup r = 
-    (*if (Register.is_hw r) && List.mem r Register.parameters then Reg(r)
-    else*) Register.M.find r c in
+    if Register.is_hw r then Reg(r)
+    else Register.M.find r c in
   let graph = ref Label.M.empty in
   let add_to_graph l i =
     graph := Label.M.add l i !graph;
@@ -391,7 +549,7 @@ let deffun (df:Ertltree.deffun) =
     fun_entry = df.fun_entry;
     fun_body = !graph;
   }
-
+;;
 let program (p:Ertltree.file) =
   {funs = List.map deffun p.funs}
                                   
@@ -415,7 +573,8 @@ let print cm =
   
 let print_deffun_colors (f: Ertltree.deffun) =
   let l = liveness f.fun_body in
-  let c,_ = (color (make l)) l in
+  let c,_ = (color) l in
+  Pervasives.print_string ("\n" ^ f.fun_name ^":\n") ;
   print c
   
 let print_ltl fmt (p: Ertltree.file) =

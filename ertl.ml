@@ -41,7 +41,8 @@ let deffun (df:Rtltree.deffun) =
         l
       in List.fold_left __fold
     in
-    let __save_caller =
+   (*
+ let __save_caller =
       let __fold lbl reg arg =
         let l = Label.fresh () in
         add_to_graph l (Embinop(Mmov, reg, arg, lbl));
@@ -56,27 +57,28 @@ let deffun (df:Rtltree.deffun) =
       locals_reg:=Register.S.add reg !locals_reg;
       reg
     in
+
     let local_reg = List.rev_map __generate_new_register Register.caller_saved in
     let rev_caller = List.rev Register.caller_saved in
-    
+ *)    
     let __unstack_args lbldest = function
     |0->lbldest
     |i->let lbl = Label.fresh () in
         add_to_graph lbl (Emunop(Maddi(Int32.of_int(8*i)), rsp, lbldest));
         lbl
     in
-        
+
     let(first_arg, i, l1, j, l2) = __toreg_tostack l in
-    let lbl = __restore_caller lbl_ret local_reg rev_caller in
-    let lbl2 = __unstack_args lbl j in
+    (*let lbl = __restore_caller lbl_ret local_reg rev_caller in*)
+    let lbl2 = __unstack_args lbl_ret j in
     let lbl3 = Label.fresh() in
     add_to_graph lbl3 (Embinop(Mmov, Register.result, r, lbl2));
     let lbl4 = Label.fresh() in
     add_to_graph lbl4 (Ecall(id, i, lbl3));
     let lbl5 = __store_in_stack lbl4 l2 in
     let lbl6 = __store_in_registers lbl5 l1 (List.rev (Register.parameters)) in
-    let lbl7 = __save_caller lbl6 rev_caller local_reg in
-    Egoto(lbl7);
+    (*let lbl7 = __save_caller lbl6 rev_caller local_reg in*)
+    Egoto(lbl6);
       
     
   in
@@ -174,7 +176,7 @@ let deffun (df:Rtltree.deffun) =
     let lbl2 = __load_from_registers lbl param l1 in
     let local_reg = List.rev_map __generate_new_register Register.callee_saved in
     let rev_callee = List.rev Register.callee_saved in
-    let lbl3 = __save_callee lbl2 rev_callee local_reg in
+    let lbl3 = __restore_callee lbl2  local_reg rev_callee in
     let new_entry = Label.fresh () in
     add_to_graph new_entry (Ealloc_frame(lbl3));
 
@@ -182,7 +184,7 @@ let deffun (df:Rtltree.deffun) =
     add_to_graph new_exit (Ereturn);
     let lbl4 = Label.fresh() in
     add_to_graph lbl4 (Edelete_frame(new_exit));
-    let lbl5 = __restore_callee lbl4 local_reg rev_callee in
+    let lbl5 = __save_callee lbl4  rev_callee local_reg in
     add_to_graph lbl_ret (Embinop(Mmov, exit_reg, Register.rax, lbl5));
     new_entry
     
