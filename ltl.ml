@@ -473,20 +473,20 @@ let deffun (df:Ertltree.deffun) =
     |Estore(r1, r2, i, l) -> (match (lookup r1),(lookup r2) with
                               |Reg(p1),Reg(p2)->Estore(p1, p2, i, l)
                               |Reg(p1),s2->let l2 = Label.fresh() in
-                                           let l3 = Label.fresh() in
-                                           add_to_graph l3 (Embinop(Mmov, Reg(Register.tmp1), s2, l));
-                                           add_to_graph l2 (Estore(p1, Register.tmp1, i, l3));
+                                           (*let l3 = Label.fresh() in
+                                           add_to_graph l3 (Embinop(Mmov, Reg(Register.tmp1), s2, l));*)
+                                           add_to_graph l2 (Estore(p1, Register.tmp1, i, l));
                                            Embinop(Mmov, s2, Reg(Register.tmp1), l2);
                               |s1,Reg(p2)->let l2 = Label.fresh() in
                                            add_to_graph l2 (Estore(Register.tmp1, p2, i, l));
                                            Embinop(Mmov, s1, Reg(Register.tmp1), l2);
                               |s1,s2->let l2 = Label.fresh() in
                                       let l3 = Label.fresh() in
-                                      let l4 = Label.fresh() in
-                                      add_to_graph l2 (Embinop(Mmov, Reg(Register.tmp2), s2, l));
-                                      add_to_graph l3 (Estore(Register.tmp1, Register.tmp2, i, l2));
-                                      add_to_graph l4 (Embinop(Mmov, s2, Reg(Register.tmp2), l3));
-                                      Embinop(Mmov, s1, Reg(Register.tmp1), l4)
+                                      (*let l4 = Label.fresh() in
+                                      add_to_graph l4 (Embinop(Mmov, Reg(Register.tmp2), s2, l));*)
+                                      add_to_graph l3 (Estore(Register.tmp1, Register.tmp2, i, l));
+                                      add_to_graph l2 (Embinop(Mmov, s2, Reg(Register.tmp2), l3));
+                                      Embinop(Mmov, s1, Reg(Register.tmp1), l2)
                              )
     |Eload(r1, i, r2, l) -> (match (lookup r1),(lookup r2) with
                              |Reg(p1),Reg(p2)->Eload(p1, i, p2, l)
@@ -498,9 +498,9 @@ let deffun (df:Ertltree.deffun) =
                                           Embinop(Mmov, s1, Reg(Register.tmp1), l2);
                              |s1,s2->let l2 = Label.fresh() in
                                      let l3 = Label.fresh() in
-                                     add_to_graph l2 (Embinop(Mmov, s1, Reg(Register.tmp1), l));
+                                     add_to_graph l2 (Embinop(Mmov, Reg(Register.tmp2), s2, l));
                                      add_to_graph l3 (Eload(Register.tmp1, i, Register.tmp2, l2));
-                                     Embinop(Mmov, Reg(Register.tmp2), s2, l3)
+                                     Embinop(Mmov, s1, Reg(Register.tmp1), l3)
                             )
     |Emunop(op, r, l) -> Emunop(op, lookup r, l)
     |Embinop(op, r1, r2, l) when op = Mmov && (lookup r1)=(lookup r2) -> Egoto(l)
