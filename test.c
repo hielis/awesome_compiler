@@ -64,6 +64,7 @@ struct L* cercle(int n) {
 
 /* jeu de Josephus */
 int josephus(int n, int p) {
+
   /* c est le joueur courant, 1 au départ */
   struct L *c;
   c = cercle(n);
@@ -85,7 +86,8 @@ int josephus(int n, int p) {
 
 int print_int(int n) {
   int q;
-  q = n / 10;
+  q = 0;
+  //q = n / 10;
   if (n > 9) print_int(q);
   putchar('0' + (n - 10*q));
   return 0;
