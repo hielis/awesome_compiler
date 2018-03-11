@@ -90,9 +90,10 @@ let color graph live_map =
   let h = Hashtbl.create 129 in
 
   let __fill_hashtable lbl info col =
-    let __add reg acc =
+    let __add (reg: Register.t) acc =
+      (*Pervasives.print_endline (reg:>string);*)
       match Hashtbl.find_opt h reg with
-      |None-> Hashtbl.add h reg 1.0; if (Register.is_hw reg) then Register.S.add reg acc else acc
+      |None-> (Hashtbl.add h reg 1.0; if (Register.is_hw reg) then Register.S.add reg acc else acc)
       |Some(i)-> Hashtbl.replace h reg (i +. 1.0); acc
     in
     match info.instr with
@@ -107,14 +108,17 @@ let color graph live_map =
     |Epush_param(r1,_)->  __add r1 col
     |_-> col
   in
-  let colors = Label.M.fold __fill_hashtable live_map Register.S.empty in  
-  let __reserve_hw reg acc =
+  let colors = ref (Label.M.fold __fill_hashtable live_map Register.S.empty) in  
+  (*let __reserve_hw reg acc =
     Register.M.add reg (Reg(reg)) acc
   in
-  let initial_cmap = Register.S.fold __reserve_hw colors Register.M.empty in
+  let initial_cmap = Register.S.fold __reserve_hw !colors Register.M.empty in*)
   let find_minimal_cost g =
-    let __fold v e current =
-      let cost = (Hashtbl.find h v) /. Pervasives.float_of_int (Register.S.cardinal (Register.S.union e.prefs e.intfs)) in
+    (*Pervasives.print_newline ();*)
+    let __fold (v:Register.t) e current =
+      (*Pervasives.print_endline (v:>string);*)
+      let f = try(Hashtbl.find h v) with Not_found -> 0.0 in
+      let cost = (f /. Pervasives.float_of_int (Register.S.cardinal (Register.S.union e.prefs e.intfs)))  in
       match current with
       |None->Some(v,cost)
       |Some(v2,c2) when cost<c2 -> Some(v,cost)
@@ -208,7 +212,10 @@ let color graph live_map =
       with Edge(v1,v2)-> (let u1,u2 = if(Register.is_pseudo v2 || v1=Register.rax) then
                                         v2,v1 else v1,v2
                           in
+                          colors := Register.S.remove u1 !colors;
                           let c = simplify k (fusionner g u1 u2) in
+                          (*Pervasives.print_endline ((("copie de "^((u2:>string)^": "))^(u1:>string))^(" -> "^(match (Register.M.find u2 c) with |Reg(r)->(r:>string) |Spilled(n)->"spilled")));*)
+                          (*eventuellement remettre u1 en couleur dispo*)
                           Register.M.add u1 (Register.M.find u2 c) c)
 
     and freeze k g =
@@ -221,7 +228,7 @@ let color graph live_map =
 
     and spill k g =
       match find_minimal_cost g with
-      |None-> initial_cmap(*Register.M.empty*)
+      |None-> (*initial_cmap*)Register.M.empty
       |Some(v,_)-> select k g v
 
     and select k g v =
@@ -229,30 +236,51 @@ let color graph live_map =
       let __forget va ea tmp =
         Register.M.add va {prefs = Register.S.remove v ea.prefs; intfs = Register.S.remove v ea.intfs} tmp
       in
+      colors := Register.S.remove v !colors;
       let c = simplify k (Register.M.fold __forget (Register.M.remove v g) Register.M.empty) in
+      if(Register.is_hw v) then colors := Register.S.add v !colors else ();
       let possible_color =
         let __find_colors vaux available =
-          match (Register.M.find vaux c) with
-          |Reg(r) -> Register.S.remove r available
-          |_->available
+          match (Register.M.find_opt vaux c) with
+          |None->(*if(Register.is_hw vaux) then*) Register.S.remove vaux available (*else available*)
+          |Some(caux)->(match caux with
+                       |Reg(r) -> Register.S.remove r available
+                       |_->available)
         in
-        let list = Register.S.fold __find_colors e.intfs colors in
+        let list = Register.S.fold __find_colors e.intfs !colors in
         let __get_pref_color vaux =
-          match Register.M.find vaux c with
-          |Reg(r) -> Register.S.mem r list
-          |_-> false
+          match Register.M.find_opt vaux c with
+               |None->false
+               |Some(caux)-> (match caux with
+                             |Reg(r) -> Register.S.mem r list
+                             |_-> false)
         in
-        try (Register.M.find (Register.S.find_first __get_pref_color e.prefs) c)
+        (*let rec __print_list (r:Register.t) =
+        Pervasives.print_string ((r:>string)^"::")
+        in
+        Pervasives.print_string (("prefs de ")^((v:>string)^": "));
+        Register.S.iter __print_list e.prefs;
+        (*Pervasives.print_newline (); *)
+        Pervasives.print_string (("  intfs de ")^((v:>string)^": "));
+        Register.S.iter __print_list e.intfs;
+        Pervasives.print_newline ();
+        Pervasives.print_string (("couleurs possibles pour ")^((v:>string)^": "));
+        Register.S.iter __print_list list;
+        Pervasives.print_newline ();*)
+        try (let reg = (Register.S.find_first __get_pref_color e.prefs)
+             in Register.M.find reg c)
         with Not_found -> if(Register.S.mem v list) then Reg(v)
                           else (try Reg(Register.S.choose list)
                                 with Not_found -> Spilled(get_spill()))
       in
+      
+      (*Pervasives.print_endline ((v:>string)^(" -> "^(match possible_color with |Reg(r)->(r:>string) |Spilled(n)->"spilled")));*)
       Register.M.add v possible_color c
-
+      
     in
     simplify card gr
   in
-  let colored_graph = george_appel (Register.S.cardinal colors) (* graph*) (Register.S.fold Register.M.remove colors graph) in
+  let colored_graph = george_appel (Register.S.cardinal !colors) graph (*(Register.S.fold Register.M.remove colors graph)*) in
   (colored_graph,necessary_space ())
                            
                                   
@@ -429,7 +457,8 @@ let color graph live_map =
 
 let deffun (df:Ertltree.deffun) =
   let live_map = liveness df.fun_body in
-  let c,space = color (make (live_map)) live_map in
+  let igraph = make live_map in
+  let c,space = color igraph live_map in
   let lookup r = 
      Register.M.find r c in
   let graph = ref Label.M.empty in
@@ -446,7 +475,7 @@ let deffun (df:Ertltree.deffun) =
                               |Reg(p1),s2->let l2 = Label.fresh() in
                                            let l3 = Label.fresh() in
                                            add_to_graph l3 (Embinop(Mmov, Reg(Register.tmp1), s2, l));
-                                           add_to_graph l2 (Estore(p1, Register.tmp1, i, l2));
+                                           add_to_graph l2 (Estore(p1, Register.tmp1, i, l3));
                                            Embinop(Mmov, s2, Reg(Register.tmp1), l2);
                               |s1,Reg(p2)->let l2 = Label.fresh() in
                                            add_to_graph l2 (Estore(Register.tmp1, p2, i, l));
@@ -592,13 +621,17 @@ let print cm =
 let print_deffun_colors (f: Ertltree.deffun) =
   let l = liveness f.fun_body in
   let c,_ = (color (make l)) l in
+  Pervasives.print_newline ();
+  Pervasives.print_endline (f.fun_name :> string);
   print c
   
 let print_ltl fmt (p: Ertltree.file) =
   fprintf fmt "=== PREFS & INTFS GRAPH  =============================@\n";
+  Pervasives.print_newline ();
   List.iter print_deffun p.funs;
   Pervasives.print_newline ();
   fprintf fmt "\n=== COLORS ===============================@\n";
+  Pervasives.print_newline();
   List.iter print_deffun_colors p.funs;
   Pervasives.print_newline ();
   

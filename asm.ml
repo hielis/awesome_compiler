@@ -104,8 +104,8 @@ and instr g l = function
     );
     lin g l1
   |Epush(op, l1) -> emit l (pushq (operand op)); lin g l1
-  |Eload(r1, n, r2, l1)-> emit l (movq (ind ~ofs:n (register r1)) (reg (register r2))); lin g l1
-  |Estore(r1, r2, n, l1)-> emit l (movq (reg (register r1)) (ind ~ofs:n (register r2))); lin g l1
+  |Eload(r1, n, r2, l1)-> emit l (movq (ind ~ofs:(n +8) (register r1)) (reg (register r2))); lin g l1
+  |Estore(r1, r2, n, l1)-> emit l (movq (reg (register r1)) (ind ~ofs:(n + 8) (register r2))); lin g l1
   |Egoto(l1) -> (match (Hashtbl.find_opt visited l1) with 
                  |None -> emit l (label (l1 :> string))
                  |Some _ -> weneed_label l1;
