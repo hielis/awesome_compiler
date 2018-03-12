@@ -63,7 +63,7 @@ and mk_sub e1 e2 = match e1.expr_node, e2.expr_node with
 
 and mk_div e1 e2 = match e1.expr_node, e2.expr_node with
   |_, Ttree.Econst(t) when t=Int32.one -> e1
-  |Ttree.Econst(n1), Ttree.Econst(n2) -> {expr_node = Ttree.Econst(Int32.div n1 n2);
+  |Ttree.Econst(n1), Ttree.Econst(n2) when n2 <> Int32.zero-> {expr_node = Ttree.Econst(Int32.div n1 n2);
                                           expr_typ = Tint}
    |Econst(t), _ when (t=Int32.zero && is_pure e2) -> {expr_node = Econst(Int32.zero);
                                                       expr_typ = Tint}
