@@ -18,7 +18,7 @@ let deffun (df:Rtltree.deffun) =
       let rec __aux first_arg i j accr accs = function
         |[]->let rec __aux2 acc = function |i when i>=6-> acc | i -> __aux2 (None::acc) (i+1) in
              (first_arg, i, __aux2 accr i, j, accs)
-        |t::q when i=0 -> __aux (Some(t)) (i+1) j (Some(t)::accr) accs q
+        |t::q when i=0 -> __aux (Some(t)) (i+1) j accr accs q
         |t::q when i<6->__aux first_arg (i+1) j (Some(t)::accr) accs q
         |t::q-> __aux first_arg i (j+1) accr (t::accs) q
       in __aux None 0 0 [] []
@@ -42,25 +42,7 @@ let deffun (df:Rtltree.deffun) =
       in List.fold_left __fold
     in
 
-(*    let __save_caller =
-      let __fold lbl reg arg =
-        let l = Label.fresh () in
-        add_to_graph l (Embinop(Mmov, reg, arg, lbl));
-        l
-      in List.fold_left2 __fold
-    in
-    let __restore_caller =
-      __save_caller
-    in
-    let __generate_new_register e =
-      let reg=Register.fresh() in
-      locals_reg:=Register.S.add reg !locals_reg;
-      reg
-    in 
-    let local_reg = List.rev_map __generate_new_register Register.caller_saved in
-    let rev_caller = List.rev Register.caller_saved in
-  
- *)  let __unstack_args lbldest = function
+    let __unstack_args lbldest = function
     |0->lbldest
     |i->let lbl = Label.fresh () in
         add_to_graph lbl (Emunop(Maddi(Int32.of_int(8*i)), rsp, lbldest));
@@ -68,18 +50,16 @@ let deffun (df:Rtltree.deffun) =
     in
         
     let(first_arg, i, l1, j, l2) = __toreg_tostack l in
-    let lbl = lbl_ret in (*let lbl = __restore_caller lbl_ret local_reg rev_caller in*)
-    let lbl2 = __unstack_args lbl j in
-    let lbl3 = Label.fresh() in
-    add_to_graph lbl3 (Embinop(Mmov, Register.result, r, lbl2));
-    let lbl4 = Label.fresh() in
-    add_to_graph lbl4 (Ecall(id, i, lbl3));
-    let lbl5 = __store_in_stack lbl4 l2 in
-    let lbl6 = __store_in_registers lbl5 l1 (List.rev (Register.parameters)) in
-    let lbl7 = lbl6 in (*let lbl7 = __save_caller lbl6 rev_caller local_reg in*)
-    Egoto(lbl7);
-      
-    
+    let lbl = __unstack_args lbl_ret j in
+    let lbl2 = Label.fresh() in
+    add_to_graph lbl2 (Embinop(Mmov, Register.result, r, lbl));
+    match first_arg with
+    |None->Ecall(id, i, lbl_ret)
+    |Some(arg)->let lbl3 = Label.fresh() in
+                add_to_graph lbl3 (Ecall(id, i, lbl2));
+                let lbl4 = __store_in_stack lbl3 l2 in
+                let lbl5 = __store_in_registers lbl4 l1 (List.rev (List.tl Register.parameters)) in
+                Embinop(Mmov, arg, (List.hd Register.parameters), lbl5)
   in
   let instr = function
     |Rtltree.Econst(i, r, l) ->

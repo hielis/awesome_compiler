@@ -5,3 +5,5 @@ _build/*
 *.out
 *.s
 tests/*
+mini-c
+tests-v2.tar.gz

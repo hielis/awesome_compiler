@@ -30,56 +30,9 @@ let make live_map =
           Register.M.update r (__add_intf r1) (Register.M.update r1 (__add_intf r) g)
       in
       Register.S.fold __fold_outs info.outs graph
-    (************************************************************************************************************
-     * |Econst(_,r1,_)->let __fold_outs r g =                                                                   *
-     *                    if (r = r1) then g                                                                    *
-     *                    else                                                                                  *
-     *                      Register.M.update r (__add_intf r1) (Register.M.update r1 (__add_intf r) g)         *
-     *                  in Register.S.fold __fold_outs info.outs graph                                          *
-     * |Eload(_,_,r1,_)->let __fold_outs r g =                                                                  *
-     *                     if (r = r1) then g                                                                   *
-     *                     else                                                                                 *
-     *                       Register.M.update r (__add_intf r1) (Register.M.update r1 (__add_intf r) g)        *
-     *                  in Register.S.fold __fold_outs info.outs graph                                          *
-     * |Estore(_,r1,_,_)-> let __fold_outs r g =                                                                *
-     *                       if (r = r1) then g                                                                 *
-     *                       else                                                                               *
-     *                         Register.M.update r (__add_intf r1) (Register.M.update r1 (__add_intf r) g)      *
-     *                     in Register.S.fold __fold_outs info.outs graph                                       *
-     * |Emunop(_,r1,_)-> let __fold_outs r g =                                                                  *
-     *                     if (r = r1) then g                                                                   *
-     *                     else                                                                                 *
-     *                       Register.M.update r (__add_intf r1) (Register.M.update r1 (__add_intf r) g)        *
-     *                   in Register.S.fold __fold_outs info.outs graph                                         *
-     * |Embinop(_,_,r1,_)-> let __fold_outs r g =                                                               *
-     *                        if (r = r1) then g                                                                *
-     *                        else                                                                              *
-     *                          Register.M.update r (__add_intf r1) (Register.M.update r1 (__add_intf r) g)     *
-     *                      in Register.S.fold __fold_outs info.outs graph                                      *
-     * (\*|Emubranch(_,r1,_,_)-> let __fold_outs r g =                                                          *
-     *                          if (r = r1) then g                                                              *
-     *                          else                                                                            *
-     *                            Register.M.update r (__add_intf r1) (Register.M.update r1 (__add_intf r) g)   *
-     *                        in Register.S.fold __fold_outs info.outs graph                                    *
-     * |Embbranch(_,_,r1,_,_)-> let __fold_outs r g =                                                           *
-     *                            if (r = r1) then g                                                            *
-     *                            else                                                                          *
-     *                              Register.M.update r (__add_intf r1) (Register.M.update r1 (__add_intf r) g) *
-     *                          in Register.S.fold __fold_outs info.outs graph*\)                               *
-     * |Eget_param(_,r1,_)-> let __fold_outs r g =                                                              *
-     *                         if (r = r1) then g                                                               *
-     *                         else                                                                             *
-     *                           Register.M.update r (__add_intf r1) (Register.M.update r1 (__add_intf r) g)    *
-     *                       in Register.S.fold __fold_outs info.outs graph                                     *
-     * |Epush_param(r1,_)-> let __fold_outs r g =                                                               *
-     *                        if (r = r1) then g                                                                *
-     *                        else                                                                              *
-     *                          Register.M.update r (__add_intf r1) (Register.M.update r1 (__add_intf r) g)     *
-     *                      in Register.S.fold __fold_outs info.outs graph                                      *
-     ************************************************************************************************************)
     |_-> 
       let __fold_outs r g =
-        Register.S.fold (fun rdef gp -> Register.M.update r (__add_intf rdef) (Register.M.update rdef (__add_intf r) gp)) info.defs g
+        Register.S.fold (fun rdef gp -> if(r<>rdef) then Register.M.update r (__add_intf rdef) (Register.M.update rdef (__add_intf r) gp) else gp) info.defs g
       in
       Register.S.fold __fold_outs info.outs graph
   in
@@ -88,42 +41,39 @@ let make live_map =
 type color = Ltltree.operand
 type coloring = color Register.map
 
-(*let colors = Register.allocatable;;*)
+let colors = Register.allocatable
 
 exception Edge of Register.t * Register.t
                 
 let color graph live_map =
   let h = Hashtbl.create 129 in
 
-  let __fill_hashtable lbl info col =
-    let __add (reg: Register.t) acc =
-      (*Pervasives.print_endline (reg:>string);*)
+  let __fill_hashtable lbl info =
+    let __add (reg: Register.t) =
       match Hashtbl.find_opt h reg with
-      |None-> (Hashtbl.add h reg 1.0; if (Register.is_hw reg) then Register.S.add reg acc else acc)
-      |Some(i)-> Hashtbl.replace h reg (i +. 1.0); acc
+      |None-> Hashtbl.add h reg 1.0;
+      |Some(i)-> Hashtbl.replace h reg (i +. 1.0);
     in
     match info.instr with
-    |Econst(_,r1,_)-> __add r1 col
-    |Eload(r2,_,r1,_)-> __add r2 (__add r1 col)
-    |Estore(r2,r1,_,_)-> __add r2 (__add r1 col)
-    |Emunop(_,r1,_)->  __add r1 col
-    |Embinop(_,r2,r1,_)->  __add r2 (__add r1 col)
-    |Emubranch(_,r1,_,_)-> __add r1 col
-    |Embbranch(_,r2,r1,_,_)-> __add r2 (__add r1 col)
-    |Eget_param(_,r1,_)-> __add r1 col
-    |Epush_param(r1,_)->  __add r1 col
-    |_-> col
+    |Econst(_,r1,_)-> __add r1
+    |Eload(r2,_,r1,_)-> __add r2;__add r1
+    |Estore(r2,r1,_,_)-> __add r2; __add r1
+    |Emunop(_,r1,_)->  __add r1
+    |Embinop(_,r2,r1,_)->  __add r2; __add r1
+    |Emubranch(_,r1,_,_)-> __add r1
+    |Embbranch(_,r2,r1,_,_)-> __add r2; __add r1
+    |Eget_param(_,r1,_)-> __add r1
+    |Epush_param(r1,_)->  __add r1
+    |_-> ()
   in
-  let colors = ref (Label.M.fold __fill_hashtable live_map Register.S.empty) in  
-  colors:=Register.allocatable;
+  Label.M.iter __fill_hashtable live_map;
+
   let __reserve_hw reg acc =
     Register.M.add reg (Reg(reg)) acc
   in
-  let initial_cmap = Register.S.fold __reserve_hw !colors Register.M.empty in
+  let initial_cmap = Register.S.fold __reserve_hw colors (Register.M.add Register.rsp (Reg(Register.rsp)) (Register.M.add Register.rbp (Reg(Register.rbp)) Register.M.empty)) in
   let find_minimal_cost g =
-    (*Pervasives.print_newline ();*)
     let __fold (v:Register.t) e current =
-      (*Pervasives.print_endline (v:>string);*)
       if (Register.is_hw v) then current
       else (
       let f = try(Hashtbl.find h v) with Not_found -> 0.0 in
@@ -224,10 +174,8 @@ let color graph live_map =
       with Edge(v1,v2)-> (let u1,u2 = if(Register.is_hw v1) then
                                         v2,v1 else v1,v2
                           in
-                          (*colors := Register.S.remove u1 !colors;*)
                           let c = simplify k (fusionner g u1 u2) in
                           Pervasives.print_endline ((("copie de "^((u2:>string)^": "))^(u1:>string))^(" -> "^(match (Register.M.find u2 c) with |Reg(r)->(r:>string) |Spilled(n)->"spilled")));
-                          (*eventuellement remettre u1 en couleur dispo*)
                           Register.M.add u1 (Register.M.find u2 c) c)
 
     and freeze k g =
@@ -240,7 +188,7 @@ let color graph live_map =
 
     and spill k g =
       match find_minimal_cost g with
-      |None-> Register.M.add Register.rsp (Reg(Register.rsp)) (Register.M.add Register.rbp (Reg(Register.rbp)) initial_cmap)(*Register.M.empty*)
+      |None-> initial_cmap
       |Some(v,_)-> select k g v
 
     and select k g v =
@@ -248,18 +196,16 @@ let color graph live_map =
       let __forget va ea tmp =
         Register.M.add va {prefs = Register.S.remove v ea.prefs; intfs = Register.S.remove v ea.intfs} tmp
       in
-      (*colors := Register.S.remove v !colors;*)
       let c = simplify k (Register.M.fold __forget (Register.M.remove v g) Register.M.empty) in
-      (*if(Register.is_hw v) then colors := Register.S.add v !colors else ();*)
       let possible_color =
         let __find_colors vaux available =
           match (Register.M.find_opt vaux c) with
-          |None->(*if(Register.is_hw vaux) then*) Register.S.remove vaux available (*else available*)
+          |None-> Register.S.remove vaux available
           |Some(caux)->(match caux with
                        |Reg(r) -> Register.S.remove r available
                        |_->available)
         in
-        let list = Register.S.fold __find_colors e.intfs !colors in
+        let list = Register.S.fold __find_colors e.intfs colors in
         let __get_pref_color vaux =
           match Register.M.find_opt vaux c with
                |None->false
@@ -272,7 +218,6 @@ let color graph live_map =
         in
         Pervasives.print_string (("prefs de ")^((v:>string)^": "));
         Register.S.iter __print_list e.prefs;
-        (*Pervasives.print_newline (); *)
         Pervasives.print_string (("  intfs de ")^((v:>string)^": "));
         Register.S.iter __print_list e.intfs;
         Pervasives.print_newline ();
@@ -292,180 +237,9 @@ let color graph live_map =
     in
     simplify card gr
   in
-  let colored_graph = george_appel (Register.S.cardinal !colors) graph (*(Register.S.fold Register.M.remove colors graph)*) in
+  let colored_graph = george_appel (Register.S.cardinal colors) graph in
   (colored_graph,necessary_space ())
                            
-                                  
-    
-  
-(*
-let color graph live_map =
-  let costtbl = Hashtbl.create 32 in
-
-  let stream = Stream.from (fun i -> Some(i+1)) in
-  let get_spill () = Stream.next stream in
-  let necessary_space () = Stream.count stream in
-  
-
-  let fill_costtbl lm =
-    let __iter key info =
-      let __add reg =
-        match Hashtbl.find_opt costtbl reg with
-        |None-> Hashtbl.add costtbl reg 1.0
-        |Some(i)-> Hashtbl.replace costtbl reg (i +. 1.0)
-      in
-      match info.instr with
-      |Econst(_,r1,_)-> __add r1
-      |Eload(r2,_,r1,_)-> __add r2; __add r1
-      |Estore(r2,r1,_,_)-> __add r2; __add r1
-      |Emunop(_,r1,_)->  __add r1
-      |Embinop(_,r2,r1,_)->  __add r2; __add r1
-      |Emubranch(_,r1,_,_)-> __add r1
-      |Embbranch(_,r2,r1,_,_)-> __add r2; __add r1
-      |Eget_param(_,r1,_)-> __add r1
-      |Epush_param(r1,_)->  __add r1
-      |_-> ()
-    in
-    Label.M.iter __iter lm
-  in
-  fill_costtbl live_map;
-  
-  let fusionner g v1 v2 =
-    if (v1<>v2) then
-      (let e1 = Register.M.find v1 g and e2 = Register.M.find v2 g in
-       Hashtbl.replace costtbl v2 ((Hashtbl.find costtbl v1) +. (Hashtbl.find costtbl v2)); 
-       let __fold_replace v edge acc =
-         let __map_replace vaux =
-           if (vaux=v1) then v2 else vaux
-         in
-         Register.M.add v {prefs = Register.S.map __map_replace edge.prefs;
-                           intfs = Register.S.map __map_replace edge.intfs;} acc
-       in
-       let interf = Register.S.union (Register.S.remove v2 e1.intfs) (Register.S.remove v1 e2.intfs) in
-       let __fold_remove_intfs_from_prefs vertice acc =
-         if(Register.S.mem vertice interf) then acc else Register.S.add vertice acc
-       in
-       let g2 = Register.M.remove v1 (Register.M.add v2 {prefs = Register.S.fold __fold_remove_intfs_from_prefs (Register.S.union (Register.S.remove v2 e1.prefs) (Register.S.remove v1 e2.prefs)) Register.S.empty;intfs = interf} g) in
-       Register.M.fold __fold_replace g2 Register.M.empty
-      )
-    else g
-  in
-  
-  let rec simplify k g =
-    let __find_vertice v edge acc =
-      if (Register.S.is_empty edge.prefs) then
-        let c = Register.S.cardinal edge.intfs in
-        if(c<k) then
-          match acc with
-          |None->Some(v,c)
-          |Some(v2,i)->if (c<i) then Some(v,c) else acc
-        else
-          acc
-      else
-        acc
-    in
-    match Register.M.fold __find_vertice g None with
-    |None-> coalesce k g
-    |Some(v,i)-> select k g v
-               
-  and coalesce k g =
-    let __satisfies_george_criteria v1 v2 =
-      let e1 = Register.M.find v1 g and e2 = Register.M.find v2 g in
-      if (Register.is_pseudo v2) then
-        let __fold v acc =
-          let edge = Register.M.find v g in
-          acc && ((Register.is_pseudo v && ((Register.S.cardinal edge.prefs) + (Register.S.cardinal edge.intfs) < k))||((Register.S.mem v e2.prefs) || (Register.S.mem v e2.intfs)))
-        in
-        Register.S.fold __fold e1.prefs (Register.S.fold __fold e1.intfs true)
-      else
-        let __fold v acc =
-          let edge = Register.M.find v g in
-          acc && ((Register.is_hw v && ((Register.S.cardinal edge.prefs) + (Register.S.cardinal edge.intfs) < k))||((Register.S.mem v e2.prefs) || (Register.S.mem v e2.intfs)))
-        in
-        Register.S.fold __fold e1.prefs (Register.S.fold __fold e1.intfs true)  
-        
-    in
-    let __fold_pref_edge v edges = function
-      |Some(v1,v2) as acc->acc
-      |None-> let __fold_aux v2 acc =
-                if (__satisfies_george_criteria v v2) then
-                  Some(v,v2)
-                else
-                  acc
-              in
-              Register.S.fold __fold_aux edges.prefs None
-    in
-    match (Register.M.fold __fold_pref_edge g None) with
-    |None->freeze k g
-    |Some(v1,v2)-> let u1,u2 = if ((Register.is_hw v1)&&(v2<>Register.rax)) then v2,v1 else v1,v2 in
-                   let c = simplify k (fusionner g u1 u2) in
-                   Register.M.add u1 (Register.M.find u2 c) c
-                   
-  and freeze k g =
-    let __find_vertice v edge acc =
-      let l = (Register.S.cardinal edge.prefs) + (Register.S.cardinal edge.intfs) in
-      if (l<k) then
-        match acc with
-        |None -> Some(v,l)
-        |Some(v2,l2) -> if (l<l2) then Some(v,l) else acc
-      else
-        acc
-    in
-    match Register.M.fold __find_vertice g None with
-    |None -> spill k g
-    |Some(v,_) -> let __remove_pref key e acc =
-                     if (key=v) then
-                       Register.M.add v {prefs = Register.S.empty; intfs = e.intfs} acc
-                     else
-                       Register.M.add key {prefs = Register.S.remove v e.prefs; intfs = e.intfs} acc
-                   in
-                   simplify k (Register.M.fold __remove_pref g Register.M.empty)
-
-  and spill k g =
-    if (Register.M.is_empty g) then
-      Register.M.empty
-    else
-      let __fold_minimal v eqdge acc =
-        let c = (Hashtbl.find costtbl v) /. (Pervasives.float_of_int ((Register.S.cardinal edge.prefs) + (Register.S.cardinal edge.intfs))) in
-        match acc with
-        |None->Some(v,c)
-        |Some(v2,c2)-> if (c<c2) then Some(v,c) else acc
-      in
-      match Register.M.fold __fold_minimal g None with
-      |None->failwith "Should be some dead code"
-      |Some(v,_)->select k g v
-
-  and select k g v =
-    let edges = Register.M.find v g in
-    let __fold_remove vaux edge acc =
-      Register.M.add vaux {prefs = Register.S.remove v edge.prefs; intfs = Register.S.remove v edge.intfs} acc
-    in
-    
-    let c = simplify k (Register.M.fold __fold_remove (Register.M.remove v g) Register.M.empty) in
-    let __find_color w available_colors =
-      try (match (Register.M.find w c) with
-           |Reg(r)->Register.S.remove r available_colors
-           |Spilled(_)->available_colors)
-      with Not_found -> available_colors
-    in
-    let color_set = (Register.S.fold __find_color edges.intfs colors) in
-    let couleur = try (Reg (if (Register.S.mem v color_set) then v else Register.S.min_elt color_set))
-                  with Not_found -> Spilled (-8*(get_spill ()))
-    in
-    Register.M.add v couleur c
-
-  in
-  let c = simplify (Register.S.cardinal colors) graph in
-  let crax = Register.M.find (Register.rax) c in
-  let __fold_swap v col acc =
-    match col with
-    |Reg(p) when p=Register.rax -> Register.M.add v crax acc
-    |a when a=crax->Register.M.add v (Reg(Register.rax)) acc
-    |_->Register.M.add v col acc
-  in
-  (Register.M.fold __fold_swap c Register.M.empty,8*(necessary_space ()))
- *)
-
 
 let deffun (df:Ertltree.deffun) =
   let live_map = liveness df.fun_body in
@@ -590,15 +364,15 @@ let deffun (df:Ertltree.deffun) =
       let i = Label.M.find lentry df.fun_body in
       add_to_graph lentry (instr i);
       (match i with
-       |Ertltree.Econst(i, r, l) -> rewrite_from l
-       |Estore(r1, r2, i, l) -> rewrite_from l
-       |Eload(r1, i, r2, l) -> rewrite_from l
-       |Emunop(op, r, l) -> rewrite_from l
-       |Embinop(op, r1, r2, l) -> rewrite_from l
-       |Emubranch(b, r, l1, l2) -> rewrite_from l1; rewrite_from l2
-       |Embbranch(b, r1, r2, l1, l2) -> rewrite_from l1; rewrite_from l2
+       |Ertltree.Econst(_, _, l) -> rewrite_from l
+       |Estore(_, _, _, l) -> rewrite_from l
+       |Eload(_, _, _, l) -> rewrite_from l
+       |Emunop(_, _, l) -> rewrite_from l
+       |Embinop(_, _, _, l) -> rewrite_from l
+       |Emubranch(_, _, l1, l2) -> rewrite_from l1; rewrite_from l2
+       |Embbranch(_, _, _, l1, l2) -> rewrite_from l1; rewrite_from l2
        |Egoto(l) -> rewrite_from l;
-       |Ecall(id, rl, l) -> rewrite_from l;
+       |Ecall(_, _, l) -> rewrite_from l;
        |Ealloc_frame(l)-> rewrite_from l
        |Edelete_frame(l)-> rewrite_from l
        |Eget_param(_,_,l)-> rewrite_from l
