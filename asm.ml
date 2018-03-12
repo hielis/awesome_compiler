@@ -96,7 +96,7 @@ and instr g l = function
           |Madd -> addq w1 w2
           |Msub -> subq w1 w2
           |Mmul -> imulq w1 w2
-          |Mdiv -> idivq w1
+          |Mdiv -> (cqto)++(idivq w1)
           |_-> failwith "dead code"
          )
        in
