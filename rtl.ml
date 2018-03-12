@@ -284,7 +284,6 @@ let deffun (df: decl_fun) =
                           |Bsub ->
                             (match e1.expr_node, e2.expr_node with
                              |_, Econst(n) ->
-                               let reg2 = new_register () in
                                let lbl = generate (Emunop(Maddi(Int32.mul Int32.minus_one n), destr, destl)) in
                                expr e1 destr lbl
                              |_, _->let lbl = generate (Embinop(Msub,reg2,destr,destl)) in
