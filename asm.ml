@@ -6,6 +6,7 @@ type instr = Code of X86_64.text | Label of Label.t
 let code = ref []
 let emit l i = code := Code i :: Label l :: !code
 let emit_wl i = code := Code i :: !code
+let emit_wc l = code := Label l :: !code
 let labels = Hashtbl.create 17
 let useful = Hashtbl.create 17
 let need_label l = Hashtbl.add labels l ()
@@ -107,7 +108,7 @@ and instr g l = function
   |Eload(r1, n, r2, l1)-> emit l (movq (ind ~ofs:(n +8) (register r1)) (reg (register r2))); lin g l1
   |Estore(r1, r2, n, l1)-> emit l (movq (reg (register r1)) (ind ~ofs:(n + 8) (register r2))); lin g l1
   |Egoto(l1) -> (match (Hashtbl.find_opt visited l1) with 
-                 |None -> emit l (label (l1 :> string))
+                 |None -> emit_wc l (*(label (l1 :> string))*)
                  |Some _ -> weneed_label l1;
                    emit l (jmp (l1 :> string))
                 );
