@@ -500,6 +500,14 @@ let deffun (df:Ertltree.deffun) =
                             )
     |Emunop(op, r, l) -> Emunop(op, lookup r, l)
     |Embinop(op, r1, r2, l) when op = Mmov && (lookup r1)=(lookup r2) -> Egoto(l)
+    |Embinop(op, r1, r2, l) when op = Mmov -> let s1 = lookup r1 and s2 = lookup r2 in
+                                              (match s1,s2 with
+                                               |Spilled(_),Spilled(_)->let l2 = Label.fresh() in
+                                                                       add_to_graph l2 (Embinop(Mmov, Reg(Register.tmp1), s2, l));
+                                                                       Embinop(Mmov, s1, Reg(Register.tmp1), l2); 
+                                               |_,_-> Embinop(Mmov, s1, s2, l)
+                                              )
+
     |Embinop(op, r1, r2, l) when op = Mmul -> let s1 = lookup r1 and s2 = lookup r2 in
                                               (match s2 with
                                               |Reg(_)->Embinop(Mmul, s1, s2, l)
@@ -531,8 +539,8 @@ let deffun (df:Ertltree.deffun) =
          let lp = Label.fresh() in
          let lp1 = Label.fresh () in
          add_to_graph lp (Embbranch(b, Register.tmp1, Register.tmp2, l1, l2));
-         add_to_graph lp1 (Embinop(Mmov, Spilled(n1), Reg(Register.tmp1), lp));
-         Embinop(Mmov, Spilled(n2), Reg(Register.tmp2), lp1)
+         add_to_graph lp1 (Embinop(Mmov, Spilled(n2), Reg(Register.tmp2), lp));
+         Embinop(Mmov, Spilled(n1), Reg(Register.tmp1), lp1)
        |Reg(r1p), Spilled(n2)->
          let lp = Label.fresh() in
          add_to_graph lp (Embbranch(b, r1p, Register.tmp1, l1, l2));
@@ -554,9 +562,11 @@ let deffun (df:Ertltree.deffun) =
     |Edelete_frame(l) -> let l2 = Label.fresh() in
                          add_to_graph l2 (Epop(Register.rbp, l));
                          Embinop(Mmov, Reg(Register.rbp), Reg(Register.rsp), l2);
-    |Eget_param(n,r,l) -> let l2 = Label.fresh() in
-                          add_to_graph l2 (Embinop(Mmov, Reg(Register.tmp1), lookup r, l));
-                          Embinop(Mmov, Spilled(n), Reg(Register.tmp1), l2) 
+    |Eget_param(n,r,l) -> (match lookup r with
+                          |Reg(p)->Embinop(Mmov, Spilled(n),Reg(p), l)
+                          |c->let l2 = Label.fresh() in
+                              add_to_graph l2 (Embinop(Mmov, Reg(Register.tmp1), c, l));
+                              Embinop(Mmov, Spilled(n), Reg(Register.tmp1), l2)) 
     |Epush_param(r,l) -> Epush(lookup r, l)
     |Ereturn -> Ereturn
   in
