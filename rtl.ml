@@ -268,34 +268,53 @@ let deffun (df: decl_fun) =
                       |Unot ->   let lbl = generate (Emunop(Msetei(Int32.zero), destr, destl)) in
                                  expr e0 destr lbl)
     |Ebinop (b,e1,e2) -> (match b with
-                          |Badd -> let reg2 = new_register () in
-                                   (match e1.expr_node, e2.expr_node with
+                          |Badd -> (match e1.expr_node, e2.expr_node with
                                     |Econst(n), _ ->
                                       let lbl = generate (Emunop(Maddi(n), destr, destl)) in
                                       expr e2 destr lbl
                                     |_, Econst(n) ->
                                       let lbl = generate (Emunop(Maddi(n), destr, destl)) in
                                       expr e1 destr lbl
-                                    |_, _-> 
-                                      let lbl = generate (Embinop(Madd,reg2,destr,destl)) in
-                                      let lbl2 = expr e2 reg2 lbl in
-                                      expr e1 destr lbl2)
-                          |Bsub -> let reg2 = new_register () in
-                                   (match e1.expr_node, e2.expr_node with
-                                    |_, Econst(n) ->
+                                    |Eaccess_local(id), _ -> let reg2 = find_register id in
+                                                             let lbl = generate (Embinop(Madd,reg2,destr, destl)) in
+                                                             expr e2 destr lbl
+                                    |_,Eaccess_local(id)-> let reg2 = find_register id in
+                                                           let lbl = generate (Embinop(Madd,reg2,destr,destl)) in
+                                                           expr e1 destr lbl
+                                    |_, _-> let reg2 = new_register () in
+                                            let lbl = generate (Embinop(Madd,reg2,destr,destl)) in
+                                            let lbl2 = expr e2 reg2 lbl in
+                                            expr e1 destr lbl2)
+                          |Bsub -> (match e2.expr_node with
+                                    |Econst(n) ->
                                       let lbl = generate (Emunop(Maddi(Int32.mul Int32.minus_one n), destr, destl)) in
                                       expr e1 destr lbl
-                                    |_, _->let lbl = generate (Embinop(Msub,reg2,destr,destl)) in
-                                           let lbl2 = expr e2 reg2 lbl in
-                                           expr e1 destr lbl2)
-                          |Bmul -> let reg2 = new_register () in
-                                   let lbl = generate (Embinop(Mmul,reg2,destr,destl)) in
-                                   let lbl2 = expr e2 reg2 lbl in
-                                   expr e1 destr lbl2
-                          |Bdiv -> let reg2 = new_register () in
-                                   let lbl = generate (Embinop(Mdiv,reg2,destr,destl)) in
-                                   let lbl2 = expr e2 reg2 lbl in
-                                   expr e1 destr lbl2
+                                    |Eaccess_local(id) -> let reg2 = find_register id in
+                                                          let lbl = generate (Embinop(Msub,reg2,destr,destl)) in
+                                                            expr e1 destr lbl
+                                    |_->let reg2 = new_register () in
+                                        let lbl = generate (Embinop(Msub,reg2,destr,destl)) in
+                                        let lbl2 = expr e2 reg2 lbl in
+                                        expr e1 destr lbl2)
+                          |Bmul -> (match e1.expr_node, e2.expr_node with
+                                    |Eaccess_local(id), _ -> let reg2 = find_register id in
+                                                             let lbl = generate (Embinop(Mmul,reg2,destr, destl)) in
+                                                             expr e2 destr lbl
+                                    |_,Eaccess_local(id)-> let reg2 = find_register id in
+                                                           let lbl = generate (Embinop(Mmul,reg2,destr,destl)) in
+                                                           expr e1 destr lbl
+                                    |_, _-> let reg2 = new_register () in
+                                            let lbl = generate (Embinop(Mmul,reg2,destr,destl)) in
+                                            let lbl2 = expr e2 reg2 lbl in
+                                            expr e1 destr lbl2)
+                          |Bdiv -> (match e2.expr_node with
+                                    |Eaccess_local(id) -> let reg2 = find_register id in
+                                                          let lbl = generate (Embinop(Mdiv,reg2,destr,destl)) in
+                                                            expr e1 destr lbl
+                                    |_->let reg2 = new_register () in
+                                        let lbl = generate (Embinop(Mdiv,reg2,destr,destl)) in
+                                        let lbl2 = expr e2 reg2 lbl in
+                                        expr e1 destr lbl2)
                           |Beq -> (match e1.expr_node, e2.expr_node with
                                    |Econst(n1),Econst(n2)->failwith "dead code"
                                    |Econst(n1),_->let lbl = generate (Emunop(Msetei(n1),destr,destl)) in
@@ -323,22 +342,50 @@ let deffun (df: decl_fun) =
                                             let lbl = generate (Embinop(Msetne,reg2,destr,destl)) in
                                             let lbl2 = expr e2 reg2 lbl in
                                             expr e1 destr lbl2)
-                          |Blt -> let reg2 = new_register () in
-                                  let lbl = generate (Embinop(Msetl,reg2,destr,destl)) in
-                                  let lbl2 = expr e2 reg2 lbl in
-                                  expr e1 destr lbl2
-                          |Ble -> let reg2 = new_register () in
-                                  let lbl = generate (Embinop(Msetle,reg2,destr,destl)) in
-                                  let lbl2 = expr e2 reg2 lbl in
-                                  expr e1 destr lbl2
-                          |Bgt -> let reg2 = new_register () in
-                                  let lbl = generate (Embinop(Msetg,reg2,destr,destl)) in
-                                  let lbl2 = expr e2 reg2 lbl in
-                                  expr e1 destr lbl2
-                          |Bge -> let reg2 = new_register () in
-                                  let lbl = generate (Embinop(Msetge,reg2,destr,destl)) in
-                                  let lbl2 = expr e2 reg2 lbl in
-                                  expr e1 destr lbl2
+                          |Blt -> (match e1.expr_node, e2.expr_node with
+                                   |Eaccess_local(id),_ -> let reg2 = find_register id in
+                                                           let lbl = generate (Embinop(Msetg,reg2, destr, destl)) in
+                                                           expr e2 destr lbl
+                                   |_,Eaccess_local(id) -> let reg2 = find_register id in
+                                                           let lbl = generate (Embinop(Msetl,reg2,destr,destl)) in
+                                                           expr e1 destr lbl
+                                   |_,_-> let reg2 = new_register () in
+                                          let lbl = generate (Embinop(Msetl,reg2,destr,destl)) in
+                                          let lbl2 = expr e2 reg2 lbl in
+                                          expr e1 destr lbl2)
+                          |Ble -> (match e1.expr_node, e2.expr_node with
+                                   |Eaccess_local(id),_ -> let reg2 = find_register id in
+                                                           let lbl = generate (Embinop(Msetge,reg2, destr, destl)) in
+                                                           expr e2 destr lbl
+                                   |_,Eaccess_local(id) -> let reg2 = find_register id in
+                                                           let lbl = generate (Embinop(Msetle,reg2,destr,destl)) in
+                                                           expr e1 destr lbl
+                                   |_,_-> let reg2 = new_register () in
+                                          let lbl = generate (Embinop(Msetle,reg2,destr,destl)) in
+                                          let lbl2 = expr e2 reg2 lbl in
+                                          expr e1 destr lbl2)
+                          |Bgt -> (match e1.expr_node, e2.expr_node with
+                                   |Eaccess_local(id),_ -> let reg2 = find_register id in
+                                                           let lbl = generate (Embinop(Msetl,reg2, destr, destl)) in
+                                                           expr e2 destr lbl
+                                   |_,Eaccess_local(id) -> let reg2 = find_register id in
+                                                           let lbl = generate (Embinop(Msetg,reg2,destr,destl)) in
+                                                           expr e1 destr lbl
+                                   |_,_-> let reg2 = new_register () in
+                                          let lbl = generate (Embinop(Msetg,reg2,destr,destl)) in
+                                          let lbl2 = expr e2 reg2 lbl in
+                                          expr e1 destr lbl2)
+                          |Bge -> (match e1.expr_node, e2.expr_node with
+                                   |Eaccess_local(id),_ -> let reg2 = find_register id in
+                                                           let lbl = generate (Embinop(Msetle,reg2, destr, destl)) in
+                                                           expr e2 destr lbl
+                                   |_,Eaccess_local(id) -> let reg2 = find_register id in
+                                                           let lbl = generate (Embinop(Msetge,reg2,destr,destl)) in
+                                                           expr e1 destr lbl
+                                   |_,_-> let reg2 = new_register () in
+                                          let lbl = generate (Embinop(Msetge,reg2,destr,destl)) in
+                                          let lbl2 = expr e2 reg2 lbl in
+                                          expr e1 destr lbl2)
                           |Band | Bor -> let lbl1 = generate(Econst((Int32.of_int 1), destr, destl))
                                          and lbl0 = generate(Econst(Int32.zero, destr, destl))
                                          in
