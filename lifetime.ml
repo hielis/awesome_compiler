@@ -13,7 +13,7 @@ type live_info = {
 
 module S = Set.Make(Register.S)
 
-               
+
 
 let liveness graph =
   let life_table = Hashtbl.create (Label.M.cardinal graph) in
@@ -44,27 +44,31 @@ let liveness graph =
     List.rev_map __map (Label.M.bindings m)
   in
   let rec kildall = function
-    |[]-> ()
-    |t::q-> let e = Hashtbl.find life_table t in
-            let old_ins = e.ins in
-            let __get_ins s =
-              (Hashtbl.find life_table s).ins
-            in
-            e.outs <- S.fold (Register.S.fold (Register.S.add)) (S.of_list (List.rev_map __get_ins e.succ)) (Register.S.empty);
-            e.ins <- Register.S.union (e.uses) (Register.S.diff (e.outs) (e.defs));
-            Hashtbl.replace life_table t e;
-            let ws = if (Register.S.equal e.ins old_ins) then
-                       q
-                     else
-                       List.fold_right (List.cons) (Label.S.elements e.pred) q
-            in
-            kildall ws
+    |a when a = Label.S.empty -> ()
+    |set ->
+      let t = Label.S.choose set in
+      let e = Hashtbl.find life_table t in
+      let old_ins = e.ins in
+      let __get_ins s =
+        (Hashtbl.find life_table s).ins
+      in
+      e.outs <- S.fold (Register.S.union) (S.of_list (List.rev_map __get_ins e.succ)) (Register.S.empty);
+      e.ins <- Register.S.union (e.uses) (Register.S.diff (e.outs) (e.defs));
+      Hashtbl.replace life_table t e;
+      let ws = if (Register.S.equal e.ins old_ins) then
+                 (Label.S.remove t set)
+               else
+                 Label.S.union e.pred (Label.S.remove t set)
+      in
+      kildall ws
   in
-  kildall (to_key_list graph);
+  kildall (Label.S.of_list (to_key_list graph));
 
   Hashtbl.fold (Label.M.add) life_table (Label.M.empty)
-  
+
 ;;
+
+
 
 open Format
 open Pp

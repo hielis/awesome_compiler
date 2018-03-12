@@ -23,59 +23,65 @@ let make live_map =
       |Some(arc) -> Some({prefs = Register.S.remove reg arc.prefs; intfs = Register.S.add reg arc.intfs})
     in
     match info.instr with
-    |Embinop(b,r2,r1,_) when (b = Mmov && r1<>r2) ->
+    |Embinop(b,r2,r1,_) when (b = Mmov )(*&& r1<>r2)*) ->
       let __fold_outs r g =
         if (r = r2 ||r = r1) then g
         else
           Register.M.update r (__add_intf r1) (Register.M.update r1 (__add_intf r) g)
       in
       Register.S.fold __fold_outs info.outs graph
-    |Econst(_,r1,_)->let __fold_outs r g =
-                       if (r = r1) then g
-                       else
-                         Register.M.update r (__add_intf r1) (Register.M.update r1 (__add_intf r) g)
-                     in Register.S.fold __fold_outs info.outs graph
-    |Eload(_,_,r1,_)->let __fold_outs r g =
-                        if (r = r1) then g
-                        else
-                          Register.M.update r (__add_intf r1) (Register.M.update r1 (__add_intf r) g)
-                     in Register.S.fold __fold_outs info.outs graph
-    |Estore(_,r1,_,_)-> let __fold_outs r g =
-                          if (r = r1) then g
-                          else
-                            Register.M.update r (__add_intf r1) (Register.M.update r1 (__add_intf r) g)
-                        in Register.S.fold __fold_outs info.outs graph
-    |Emunop(_,r1,_)-> let __fold_outs r g =
-                        if (r = r1) then g
-                        else
-                          Register.M.update r (__add_intf r1) (Register.M.update r1 (__add_intf r) g)
-                      in Register.S.fold __fold_outs info.outs graph
-    |Embinop(_,_,r1,_)-> let __fold_outs r g =
-                           if (r = r1) then g
-                           else
-                             Register.M.update r (__add_intf r1) (Register.M.update r1 (__add_intf r) g)
-                         in Register.S.fold __fold_outs info.outs graph
-    (*|Emubranch(_,r1,_,_)-> let __fold_outs r g =
-                             if (r = r1) then g
-                             else
-                               Register.M.update r (__add_intf r1) (Register.M.update r1 (__add_intf r) g)
-                           in Register.S.fold __fold_outs info.outs graph
-    |Embbranch(_,_,r1,_,_)-> let __fold_outs r g =
-                               if (r = r1) then g
-                               else
-                                 Register.M.update r (__add_intf r1) (Register.M.update r1 (__add_intf r) g)
-                             in Register.S.fold __fold_outs info.outs graph*)
-    |Eget_param(_,r1,_)-> let __fold_outs r g =
-                            if (r = r1) then g
-                            else
-                              Register.M.update r (__add_intf r1) (Register.M.update r1 (__add_intf r) g)
-                          in Register.S.fold __fold_outs info.outs graph
-    |Epush_param(r1,_)-> let __fold_outs r g =
-                           if (r = r1) then g
-                           else
-                             Register.M.update r (__add_intf r1) (Register.M.update r1 (__add_intf r) g)
-                         in Register.S.fold __fold_outs info.outs graph
-    |_-> graph
+    (************************************************************************************************************
+     * |Econst(_,r1,_)->let __fold_outs r g =                                                                   *
+     *                    if (r = r1) then g                                                                    *
+     *                    else                                                                                  *
+     *                      Register.M.update r (__add_intf r1) (Register.M.update r1 (__add_intf r) g)         *
+     *                  in Register.S.fold __fold_outs info.outs graph                                          *
+     * |Eload(_,_,r1,_)->let __fold_outs r g =                                                                  *
+     *                     if (r = r1) then g                                                                   *
+     *                     else                                                                                 *
+     *                       Register.M.update r (__add_intf r1) (Register.M.update r1 (__add_intf r) g)        *
+     *                  in Register.S.fold __fold_outs info.outs graph                                          *
+     * |Estore(_,r1,_,_)-> let __fold_outs r g =                                                                *
+     *                       if (r = r1) then g                                                                 *
+     *                       else                                                                               *
+     *                         Register.M.update r (__add_intf r1) (Register.M.update r1 (__add_intf r) g)      *
+     *                     in Register.S.fold __fold_outs info.outs graph                                       *
+     * |Emunop(_,r1,_)-> let __fold_outs r g =                                                                  *
+     *                     if (r = r1) then g                                                                   *
+     *                     else                                                                                 *
+     *                       Register.M.update r (__add_intf r1) (Register.M.update r1 (__add_intf r) g)        *
+     *                   in Register.S.fold __fold_outs info.outs graph                                         *
+     * |Embinop(_,_,r1,_)-> let __fold_outs r g =                                                               *
+     *                        if (r = r1) then g                                                                *
+     *                        else                                                                              *
+     *                          Register.M.update r (__add_intf r1) (Register.M.update r1 (__add_intf r) g)     *
+     *                      in Register.S.fold __fold_outs info.outs graph                                      *
+     * (\*|Emubranch(_,r1,_,_)-> let __fold_outs r g =                                                          *
+     *                          if (r = r1) then g                                                              *
+     *                          else                                                                            *
+     *                            Register.M.update r (__add_intf r1) (Register.M.update r1 (__add_intf r) g)   *
+     *                        in Register.S.fold __fold_outs info.outs graph                                    *
+     * |Embbranch(_,_,r1,_,_)-> let __fold_outs r g =                                                           *
+     *                            if (r = r1) then g                                                            *
+     *                            else                                                                          *
+     *                              Register.M.update r (__add_intf r1) (Register.M.update r1 (__add_intf r) g) *
+     *                          in Register.S.fold __fold_outs info.outs graph*\)                               *
+     * |Eget_param(_,r1,_)-> let __fold_outs r g =                                                              *
+     *                         if (r = r1) then g                                                               *
+     *                         else                                                                             *
+     *                           Register.M.update r (__add_intf r1) (Register.M.update r1 (__add_intf r) g)    *
+     *                       in Register.S.fold __fold_outs info.outs graph                                     *
+     * |Epush_param(r1,_)-> let __fold_outs r g =                                                               *
+     *                        if (r = r1) then g                                                                *
+     *                        else                                                                              *
+     *                          Register.M.update r (__add_intf r1) (Register.M.update r1 (__add_intf r) g)     *
+     *                      in Register.S.fold __fold_outs info.outs graph                                      *
+     ************************************************************************************************************)
+    |_-> 
+      let __fold_outs r g =
+        Register.S.fold (fun rdef gp -> Register.M.update r (__add_intf rdef) (Register.M.update rdef (__add_intf r) gp)) info.defs g
+      in
+      Register.S.fold __fold_outs info.outs graph
   in
   Label.M.fold __fold_intf live_map (Label.M.fold __fold_pref live_map Register.M.empty)
 
@@ -118,12 +124,14 @@ let color graph live_map =
     (*Pervasives.print_newline ();*)
     let __fold (v:Register.t) e current =
       (*Pervasives.print_endline (v:>string);*)
+      if (Register.is_hw v) then current
+      else (
       let f = try(Hashtbl.find h v) with Not_found -> 0.0 in
       let cost = (f /. Pervasives.float_of_int (Register.S.cardinal (Register.S.union e.prefs e.intfs)))  in
       match current with
       |None->Some(v,cost)
       |Some(v2,c2) when cost<c2 -> Some(v,cost)
-      |_->current
+      |_->current)
     in
     Register.M.fold __fold g None
   in
@@ -205,13 +213,12 @@ let color graph live_map =
     in
     Register.M.fold __replace_in_intfs_and_prefs g_tmp Register.M.empty
   in
-              
+
   let george_appel card gr =
     let rec simplify k g =
       match find_nopref_minimaldegree k g with
       |None->coalesce k g
       |Some(v,i)-> select k g v
-    
     and coalesce k g =
       try (satisfies_george_criteria k g; freeze k g)
       with Edge(v1,v2)-> (let u1,u2 = if(Register.is_hw v1) then
@@ -219,7 +226,7 @@ let color graph live_map =
                           in
                           (*colors := Register.S.remove u1 !colors;*)
                           let c = simplify k (fusionner g u1 u2) in
-                          (*Pervasives.print_endline ((("copie de "^((u2:>string)^": "))^(u1:>string))^(" -> "^(match (Register.M.find u2 c) with |Reg(r)->(r:>string) |Spilled(n)->"spilled")));*)
+                          Pervasives.print_endline ((("copie de "^((u2:>string)^": "))^(u1:>string))^(" -> "^(match (Register.M.find u2 c) with |Reg(r)->(r:>string) |Spilled(n)->"spilled")));
                           (*eventuellement remettre u1 en couleur dispo*)
                           Register.M.add u1 (Register.M.find u2 c) c)
 
@@ -233,7 +240,7 @@ let color graph live_map =
 
     and spill k g =
       match find_minimal_cost g with
-      |None-> initial_cmap(*Register.M.empty*)
+      |None-> Register.M.add Register.rsp (Reg(Register.rsp)) (Register.M.add Register.rbp (Reg(Register.rbp)) initial_cmap)(*Register.M.empty*)
       |Some(v,_)-> select k g v
 
     and select k g v =
@@ -260,7 +267,7 @@ let color graph live_map =
                              |Reg(r) -> Register.S.mem r list
                              |_-> false)
         in
-        (*let rec __print_list (r:Register.t) =
+        let rec __print_list (r:Register.t) =
         Pervasives.print_string ((r:>string)^"::")
         in
         Pervasives.print_string (("prefs de ")^((v:>string)^": "));
@@ -271,7 +278,7 @@ let color graph live_map =
         Pervasives.print_newline ();
         Pervasives.print_string (("couleurs possibles pour ")^((v:>string)^": "));
         Register.S.iter __print_list list;
-        Pervasives.print_newline ();*)
+        Pervasives.print_newline ();
         try (let reg = (Register.S.find_first __get_pref_color e.prefs)
              in Register.M.find reg c)
         with Not_found -> if(Register.S.mem v list) then Reg(v)
@@ -279,8 +286,8 @@ let color graph live_map =
                                 with Not_found -> Spilled(get_spill()))
       in
       
-      (*Pervasives.print_endline ((v:>string)^(" -> "^(match possible_color with |Reg(r)->(r:>string) |Spilled(n)->"spilled")));*)
-      if(Register.is_pseudo v) then Register.M.add v possible_color c else c
+      Pervasives.print_endline ((v:>string)^(" -> "^(match possible_color with |Reg(r)->(r:>string) |Spilled(n)->"spilled")));
+      Register.M.add v possible_color c
       
     in
     simplify card gr
@@ -464,8 +471,8 @@ let deffun (df:Ertltree.deffun) =
   let live_map = liveness df.fun_body in
   let igraph = make live_map in
   let c,space = color igraph live_map in
-  let lookup r = 
-     Register.M.find r c in
+  let lookup r =
+     try Register.M.find r c with Not_found -> failwith ("Not found : "^ (r :> string)) in
   let graph = ref Label.M.empty in
   let add_to_graph l i =
     graph := Label.M.add l i !graph;
