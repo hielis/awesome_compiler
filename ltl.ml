@@ -109,10 +109,11 @@ let color graph live_map =
     |_-> col
   in
   let colors = ref (Label.M.fold __fill_hashtable live_map Register.S.empty) in  
-  (*let __reserve_hw reg acc =
+  colors:=Register.allocatable;
+  let __reserve_hw reg acc =
     Register.M.add reg (Reg(reg)) acc
   in
-  let initial_cmap = Register.S.fold __reserve_hw !colors Register.M.empty in*)
+  let initial_cmap = Register.S.fold __reserve_hw !colors Register.M.empty in
   let find_minimal_cost g =
     (*Pervasives.print_newline ();*)
     let __fold (v:Register.t) e current =
@@ -133,22 +134,26 @@ let color graph live_map =
   
   let find_minimaldegree k g =
     let __fold_aux vertice edge found =
-      let cardinal = Register.S.cardinal (Register.S.union edge.prefs edge.intfs)  in
-      if(cardinal < k) then
-        match found with
-        |None->Some(vertice, edge, cardinal)
-        |Some(vert, e, card)->if(cardinal < card) then Some(vertice, edge, cardinal) else found
+      if (Register.is_pseudo vertice) then
+        (let cardinal = Register.S.cardinal (Register.S.union edge.prefs edge.intfs)  in
+         if(cardinal < k) then
+           match found with
+           |None->Some(vertice, edge, cardinal)
+           |Some(vert, e, card)->if(cardinal < card) then Some(vertice, edge, cardinal) else found
+         else found)
       else found
     in Register.M.fold __fold_aux g None
   in
   
   let find_nopref_minimaldegree k g =
     let __fold_aux vertice edge found =
-      let cardinal = Register.S.cardinal edge.intfs in
-      if(Register.S.is_empty edge.prefs && cardinal < k) then
-        match found with
-        |None->Some(vertice, cardinal)
-        |Some(vert, card)->if(cardinal < card) then Some(vertice, cardinal) else found
+      if (Register.is_pseudo vertice) then
+        (let cardinal = Register.S.cardinal edge.intfs in
+         if(Register.S.is_empty edge.prefs && cardinal < k) then
+           match found with
+           |None->Some(vertice, cardinal)
+           |Some(vert, card)->if(cardinal < card) then Some(vertice, cardinal) else found
+         else found)
       else found
     in Register.M.fold __fold_aux g None
   in
@@ -163,13 +168,13 @@ let color graph live_map =
             (not((Register.is_hw vaux)||((Register.S.cardinal eaux.prefs) + (Register.S.cardinal eaux.intfs) >= k)))||(Register.S.mem vaux (Register.S.union e2.prefs e2.intfs))
           in
           Register.S.for_all __verify_neighbour (Register.S.union edge.prefs edge.intfs) 
-        else
+        else if (Register.is_pseudo vertice) then
           let __verify_neighbour vaux =
             let eaux = Register.M.find vaux g in 
             (not((Register.is_pseudo vaux)||((Register.S.cardinal eaux.prefs) + (Register.S.cardinal eaux.intfs) >= k)))||(Register.S.mem vaux (Register.S.union e2.prefs e2.intfs))
           in
           Register.S.for_all __verify_neighbour (Register.S.union edge.prefs edge.intfs) 
-      
+        else false
       in
       try(raise (Edge(vertice, Register.S.find_first __test edge.prefs))) with |Not_found->() 
     in
@@ -209,10 +214,10 @@ let color graph live_map =
     
     and coalesce k g =
       try (satisfies_george_criteria k g; freeze k g)
-      with Edge(v1,v2)-> (let u1,u2 = if(Register.is_pseudo v2 || v1=Register.rax) then
+      with Edge(v1,v2)-> (let u1,u2 = if(Register.is_hw v1) then
                                         v2,v1 else v1,v2
                           in
-                          colors := Register.S.remove u1 !colors;
+                          (*colors := Register.S.remove u1 !colors;*)
                           let c = simplify k (fusionner g u1 u2) in
                           (*Pervasives.print_endline ((("copie de "^((u2:>string)^": "))^(u1:>string))^(" -> "^(match (Register.M.find u2 c) with |Reg(r)->(r:>string) |Spilled(n)->"spilled")));*)
                           (*eventuellement remettre u1 en couleur dispo*)
@@ -228,7 +233,7 @@ let color graph live_map =
 
     and spill k g =
       match find_minimal_cost g with
-      |None-> (*initial_cmap*)Register.M.empty
+      |None-> initial_cmap(*Register.M.empty*)
       |Some(v,_)-> select k g v
 
     and select k g v =
@@ -236,9 +241,9 @@ let color graph live_map =
       let __forget va ea tmp =
         Register.M.add va {prefs = Register.S.remove v ea.prefs; intfs = Register.S.remove v ea.intfs} tmp
       in
-      colors := Register.S.remove v !colors;
+      (*colors := Register.S.remove v !colors;*)
       let c = simplify k (Register.M.fold __forget (Register.M.remove v g) Register.M.empty) in
-      if(Register.is_hw v) then colors := Register.S.add v !colors else ();
+      (*if(Register.is_hw v) then colors := Register.S.add v !colors else ();*)
       let possible_color =
         let __find_colors vaux available =
           match (Register.M.find_opt vaux c) with
@@ -275,7 +280,7 @@ let color graph live_map =
       in
       
       (*Pervasives.print_endline ((v:>string)^(" -> "^(match possible_color with |Reg(r)->(r:>string) |Spilled(n)->"spilled")));*)
-      Register.M.add v possible_color c
+      if(Register.is_pseudo v) then Register.M.add v possible_color c else c
       
     in
     simplify card gr
