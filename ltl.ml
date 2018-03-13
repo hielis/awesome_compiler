@@ -41,10 +41,23 @@ let make live_map =
 type color = Ltltree.operand
 type coloring = color Register.map
 
-let colors = Register.allocatable
+module Color = struct
+  type t = color
+  let compare c1 c2 =
+    match c1,c2 with
+    |Reg(_),Spilled(_)-> -1
+    |Spilled(_),Reg(_)->1
+    |Reg(r1),Reg(r2)->Pervasives.compare (r1:>string) (r2:>string)
+    |Spilled(n1),Spilled(n2)-> Pervasives.compare n2 n1
+end
+
+module ColorSet = Set.Make(Color)
+             
+let colors = Register.S.fold (fun elt acc -> ColorSet.add (Reg(elt)) acc) Register.allocatable ColorSet.empty
 
 exception Edge of Register.t * Register.t
-                
+exception FoundReg of color
+                 
 let color graph live_map =
   let h = Hashtbl.create 129 in
 
@@ -67,11 +80,11 @@ let color graph live_map =
     |_-> ()
   in
   Label.M.iter __fill_hashtable live_map;
-
+  let colors_and_spill = ref colors in
   let __reserve_hw reg acc =
     Register.M.add reg (Reg(reg)) acc
   in
-  let initial_cmap = Register.S.fold __reserve_hw colors (Register.M.add Register.rsp (Reg(Register.rsp)) (Register.M.add Register.rbp (Reg(Register.rbp)) Register.M.empty)) in
+  let initial_cmap = Register.S.fold __reserve_hw Register.allocatable (Register.M.add Register.rsp (Reg(Register.rsp)) (Register.M.add Register.rbp (Reg(Register.rbp)) Register.M.empty)) in
   let find_minimal_cost g =
     let __fold (v:Register.t) e current =
       if (Register.is_hw v) then current
@@ -200,44 +213,55 @@ let color graph live_map =
       let possible_color =
         let __find_colors vaux available =
           match (Register.M.find_opt vaux c) with
-          |None-> Register.S.remove vaux available
-          |Some(caux)->(match caux with
-                       |Reg(r) -> Register.S.remove r available
-                       |_->available)
+          |None-> ColorSet.remove (Reg(vaux)) available
+          |Some(caux)->ColorSet.remove caux available
         in
-        let list = Register.S.fold __find_colors e.intfs colors in
-        let __get_pref_color vaux =
+        let list = Register.S.fold __find_colors e.intfs !colors_and_spill in
+        let __get_pref_color vaux acc =
           match Register.M.find_opt vaux c with
-               |None->false
-               |Some(caux)-> (match caux with
-                             |Reg(r) -> Register.S.mem r list
-                             |_-> false)
+               |None->acc
+               |Some(caux)-> (match caux,acc with
+                              |Reg(_),_-> if(ColorSet.mem caux list) then raise (FoundReg(caux)) else acc
+                              |_,None -> if(ColorSet.mem caux list) then (Some(caux)) else acc
+                              |Spilled(_),_->acc )
         in
-        let rec __print_list (r:Register.t) =
-        Pervasives.print_string ((r:>string)^"::")
+        let  __print_list (r:Register.t) =
+          Pervasives.print_string ((r:>string)^"::")
         in
+        let __print_colors_list = function
+          |Reg(r)-> __print_list r
+          |Spilled(n)-> Pervasives.print_string "Spilled("; Pervasives.print_int n; Pervasives.print_string")::"
+        in
+        
         Pervasives.print_string (("prefs de ")^((v:>string)^": "));
         Register.S.iter __print_list e.prefs;
         Pervasives.print_string (("  intfs de ")^((v:>string)^": "));
         Register.S.iter __print_list e.intfs;
         Pervasives.print_newline ();
         Pervasives.print_string (("couleurs possibles pour ")^((v:>string)^": "));
-        Register.S.iter __print_list list;
+        ColorSet.iter __print_colors_list list;
         Pervasives.print_newline ();
-        try (let reg = (Register.S.find_first __get_pref_color e.prefs)
-             in Register.M.find reg c)
-        with Not_found -> if(Register.S.mem v list) then Reg(v)
-                          else (try Reg(Register.S.choose list)
-                                with Not_found -> Spilled(get_spill()))
+        try (match (Register.S.fold __get_pref_color e.prefs None) with
+             |Some(coloration) -> (match coloration with
+                                   |Reg(_)->coloration
+                                   |Spilled(_)-> try (match ColorSet.min_elt list with
+                                                      |Reg(pr)->(Reg(pr))
+                                                      |_->coloration)
+                                                 with Not_found -> coloration)
+             |None -> (try ColorSet.min_elt list
+                            with Not_found -> let new_color = Spilled(get_spill()) in
+                                              colors_and_spill := ColorSet.add new_color !colors_and_spill;
+                                              new_color))
+        with FoundReg(coloration)->coloration
       in
       
-      Pervasives.print_endline ((v:>string)^(" -> "^(match possible_color with |Reg(r)->(r:>string) |Spilled(n)->"spilled")));
+      Pervasives.print_string ((v:>string)^(" -> ")); (match possible_color with |Reg(r) ->  Pervasives.print_endline (r:>string) |Spilled(n)->Pervasives.print_string "Spilled("; Pervasives.print_int n; Pervasives.print_endline ")";);
       Register.M.add v possible_color c
       
     in
     simplify card gr
   in
-  let colored_graph = george_appel (Register.S.cardinal colors) graph in
+  let colored_graph = george_appel (ColorSet.cardinal colors) graph in
   (colored_graph,necessary_space ())
                            
 
