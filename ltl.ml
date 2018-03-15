@@ -136,15 +136,15 @@ let color graph live_map =
         if(Register.is_pseudo v2) then
           let __verify_neighbour vaux =
             let eaux = Register.M.find vaux g in 
-            (not((Register.is_hw vaux)||((Register.S.cardinal eaux.prefs) + (Register.S.cardinal eaux.intfs) >= k)))||(Register.S.mem vaux (Register.S.union e2.prefs e2.intfs))
+            (not((Register.is_hw vaux)||((Register.S.cardinal eaux.prefs) + (Register.S.cardinal eaux.intfs) >= k)))||(Register.S.mem vaux ((*Register.S.union e2.prefs*) e2.intfs))
           in
-          Register.S.for_all __verify_neighbour (Register.S.union edge.prefs edge.intfs) 
+          Register.S.for_all __verify_neighbour ((*Register.S.union edge.prefs*) edge.intfs) 
         else if (Register.is_pseudo vertice) then
           let __verify_neighbour vaux =
             let eaux = Register.M.find vaux g in 
-            (not((Register.is_pseudo vaux)||((Register.S.cardinal eaux.prefs) + (Register.S.cardinal eaux.intfs) >= k)))||(Register.S.mem vaux (Register.S.union e2.prefs e2.intfs))
+            (not((Register.is_pseudo vaux)||((Register.S.cardinal eaux.prefs) + (Register.S.cardinal eaux.intfs) >= k)))||(Register.S.mem vaux ((*Register.S.union e2.prefs*) e2.intfs))
           in
-          Register.S.for_all __verify_neighbour (Register.S.union edge.prefs edge.intfs) 
+          Register.S.for_all __verify_neighbour ((*Register.S.union edge.prefs*) edge.intfs) 
         else false
       in
       try(raise (Edge(vertice, Register.S.find_first __test edge.prefs))) with |Not_found->() 
