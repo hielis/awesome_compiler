@@ -1,0 +1,104 @@
+\section{LTL et production de code assembleur}
+\subsection{Cr\'eation d'un Graphe d'interf\'erences de registres}
+
+Le passage au code LTL pr\'esuppose l'affectation des pseudo-registres \`a des registres physiques ou \`a un emplacement de la pile. Deux principes guident cette affectation :
+\begin{itemize}
+\item L'acc\`es \`a un registre physique \'etant nettement plus rapide qu'un acc\`es \`a la pile pour le processeur, l'usage des registres physiques est \`a privil\'egier par rapport \`a un empilement.
+\item Le nombre de registres physiques \'etant limit\'e (14 dans notre exemple), cette affectation doit maximiser leur usage.
+\end{itemize}
+
+Le deuxi\`eme principe nous am\`ene donc \`a d\'eterminer quels pseudo-registres sont itilis\'es de mani\`ere simultan\'ee pour affecter plusieurs pseudo-registres \`a un même registre physique sans risque de corruption de donn\'ees.
+
+Nous d\'eterminons donc dans un premier temps quels registres sont ``vivants'' en entr\'ee et en sortie de chaque instruction, pour être ensuite capable de d\'eterminer quels registres sont incompatibles avec les registres d\'efinis par l'instruction. Les sommets du graphe ERTL reçoivent donc des \'etiquettes reçensant les registre vivants ainsi que les registres d\'efinis par l'instruction associ\'ee. Cette compl\'etion se r\'ealise ais\'ement par l'algorithme de Kildall pr\'esent\'e au cours 7.
+
+Une fois ces informations acquises, nous g\'en\'erons un graphe reçensant les diff\'erents registres (physiques ou non encore affect\'es) et d\'eterminant entre eux deux types de relation :
+\begin{itemize}
+\item Si un registre $v$ est vivant en sortie d'une instruction d\'efinissant un registre $w$, alors $v$ et $w$ ne peuvent être affect\'es au même registre physique (ou emplacement de pile) $r$ : on dit que ces deux registres ``interf\`erent''
+\item Si un registre $u$ est d\'eplac\'e vers un registre $w$ par une instruction $mov$, alors on peut essayer de leur affecter un même registre physique si ils n'interf\`erent pas par ailleurs. On leur affecte donc une ``pr\'ef\'erence'' mutuelle.
+\end{itemize}
+Ce graphe se construit en inspectant chaque instruction ERTL et en cr\'eant les arêtes ad\'equates entre les registres d\'efinis et les registres vivants en sortie.
+
+\subsection{Coloration du graphe d'interf\'erences par l'algorithme de George Appel}
+
+En possession de toutes les informations n\'ecessaires concernant la compatibilit\'e mutuelle des pseudo-registres (et avec les registres physiques) nous sommes en mesure de r\'esoudre le probl\`eme d'affectation des pseudo-registres \`a des registres physiques. Ce probl\`eme est \'equivalent \`a une coloration de graphe, chaque registre physique \'etant associ\'e \`a une couleur.
+
+Nous utilisons pour ce faire l'algorithme de George Appel, pour lequel nous ne nous focaliseront que sur les pseudo-registres. Cet algorithme de coloration associera \`a des registres physiques en priorit\'e les pseudo-registres les plus utilis\'es et avec le moins d'interf\'erences -- i.e. ayant un poids maximal avec la pond\'eration \[\frac{\text{nombre d'utilisations dans le graphe ERTL}}{\text{arit\'e dans le graphe d'interf\'erences}}\] ceci afin de minimiser l'acc\`es \`a la pile. En effet, grace \`a cette m\'etrique, les registres int\'ef\'erant avec un nombre important d'autres registres ou peu utilis\'es auront la probabilit\'e la plus importante d'être empil\'es, ce qui tend \`a minimiser  dans le premier cas le nombre de registres empil\'es, et dans le second cas le nombre d'acc\`es \`a la pile.
+
+L'algorithme de coloration \`a $k$ couleurs de George-Appel colore un graphe de la mani\`ere suivante :
+\begin{itemize}
+\item un graphe ne contenant que des registres physique recoit la coloration pour laquel tout registre est colori\'e \`a l'identique.
+\item Sinon, George Appel retirera un sommet du graphe dans l'ordre de pr\'ef\'erence suivant
+  \begin{itemize}
+  \item les pseudo-registres les plus simples \`a colorier : ceux sans arête de pr\'ef\'erence et d'arit\'e strictement inf\'erieure \`a $k$. En effet leur couleur sera imm\'ediatement d\'eduite en choisissant une couleur non utilis\'ee par leurs voisins.
+  \item un pseudo-register pouvant être fusionn\'e avec un autre registre selon le crit\`ere de George : les deux registres doivent partager une arête de pr\'ef\'erence, ne pas être tous les deux physiques et avoir des voisins interf\'erants communs (le crit\`ere exact est disponible dans le cours 8).
+  \item les pseudo registres d'arit\'e inf\'erieure \`a $k$ sont remplac\'es par le même pseudo registre pour lequel on aura oubli\'e ses pr\'ef\'erences
+  \item un pseudo-registre de poids minimal au sens de la pond\'eration explicit\'ee ci-dessus.
+  \end{itemize}
+  Ensuite, une couleur est affect\'ee au sommet \'ecart\'e :
+  \begin{itemize}
+  \item si le sommet a \'et\'e fusionn\'e, auquel cas il reçoit la couleur du voisin avec lequel il l'a \'et\'e
+  \item sinon, le sommet reçoit, parmis les couleurs disponibles (i.e. non utilis\'ees par les voisins avec lesquels il interf\`ere), en priorit\'e la couleur d'un de ses voisins ``pr\'ef\'erenciels''(en priorit\'e un registre physique, sinon une couleur de poids minimal (i.e. en priorit\'e un registre physique). Si aucune couleur n'est disponible, on lui associe un nouvel emplacement de pile et on ajoute cet emplacement aux couleurs disponibles. Dans le cas où tous les voisins pr\'ef\'erentiels sont colori\'es par un emplacement de pile, mais qu'un registre physique est par ailleurs disponible, nous choisissons de colorier ce sommet avec un registre physique : il est en effet tr\`es souvent plus efficace de charger un emplacement de pile dans un registre et de faire des op\'erations sur ce dernier qu'\'economiser une instruction $mov$ et manipuler la pile.
+  \end{itemize}
+\end{itemize}
+
+dans le cadre de la fonction factorielle, voici un r\'esum\'e de la coloration : \\
+\paragraph{}
+\begin{tabular}{l|l|l}
+  registre & pr\'ef\'erences & interf\'erences \\
+  \hline \hline
+  \#1 & & \#2, \#3, \#4, \#5, \%r10, \%r8, \\ & & \%r9, \%rax, \%rcx, \%rdi, \%rdx, \%rsi \\
+  \hline
+  \#2 & \%rax & \#1, \#4, \#5 \\
+  \hline
+  \#3 & \%rdi & \#1, \#4, \#5 \\
+  \hline
+  \#4 & \%rbx & \#1, \#2, \#3, \#5, \%r10, \%r12, \%r8, \\ & & \%r9, \%rax, \%rbx, \%rcx, \%rdi, \%rdx, \%rsi \\
+  \hline
+  \#5 & \%r12 & \#1, \#2, \#3, \#4, \%r10, \%r8, \%r9, \\ & & \%rax, \%rbx, \%rcx, \%rdi, \%rdx, \%rsi \\
+  \hline
+  \%r10 &  & \#1, \#4, \#5, \%rax \\
+  \hline
+  \%r12 & \#5 & \#4, \%rax, \%rbx \\
+  \hline
+  \%r8 &  & \#1, \#4, \#5, \%rax \\
+  \hline
+  \%r9 &  & \#1, \#4, \#5, \%rax \\
+  \hline
+  \%rax & \#2 & \#1, \#4, \#5, \%r10, \%r12, \%r8, \\ & & \%r9, \%rbx, \%rcx, \%rdi, \%rdx, \%rsi \\
+  \hline
+  \%rbx & \#4 & \#5, \%r12, \%rax \\
+  \hline
+  \%rcx &  & \#1, \#4, \#5, \%rax \\
+  \hline
+  \%rdi & \#3 & \#1, \#4, \#5, \%rax \\
+  \hline
+  \%rdx &  & \#1, \#4, \#5, \%rax \\
+  \hline
+  \%rsi &  & \#1, \#4, \#5, \%rax \\
+  
+\end{tabular}
+\paragraph{}
+chronologie :
+\begin{enumerate}
+\item fusion de \#2 avec \%rax
+\item fusion de \#3 avec \%rdi
+\item fusion de \#5 avec \%r12
+\item fusion de \#4 avec \%rbx
+\item retrait de \#1
+\item coloration des registres physiques
+\item couleurs possibles pour \#1 : $\emptyset$, empilement de \#1, cr\'eation de la couleur Spilled($-8$)
+\item coloration des autres pseudo-registre par copie
+\end{enumerate}
+\paragraph{}
+Coloration finale :
+\paragraph{}
+\begin{tabular}{l|l}
+  pseudo-registre & couleur \\
+  \hline
+  \#1 & Spilled($-8$) \\
+\#2 & \%rax \\
+\#3 & \%rdi \\
+\#4 & \%rbx \\
+\#5 & \%r12 \\
+\end{tabular}
+
