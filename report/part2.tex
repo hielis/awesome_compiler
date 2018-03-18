@@ -1,0 +1,21 @@
+\section{Typage du code, production de code RTL}
+\subsection{Typing}
+
+Le typage se fait en typant successivement les expressions, les instructions et les fonctions. Le typage doit se faire en gardant \`a l'esprit que l'on a un certain nombre d'equivalence de type, le type $void*$ utilis\'e pour stocker des pointeur est compatible avec le type $null$ (le type de la constante $0$), lui-m\^eme compatible avec le type $int$. De plus, il faut lorsque l'on type le code faire attention \`a pouvoir typer les tructures correctement. Le type d'une structure est d\'ecrit sous la forme d'un arbre (potentiellement infini, car une structure peut avoir un champ dont le type est du type de cette structure pr\'ecis\'ement, c'est le cas d'une liste cha\^in\'ee ou un arbre binaire). Les diff\'erentes structures et leurs types sont contenus dans une table de hachage (qui sera d'ailleurs pass\'ees \`a la production de code RTL).
+Il faut \^etre attentif lorsque l'on type ces expressions aux dur\'ees de vie des variables ; pour ce faire, nous stockons les diff\'erentes variables dans une table de hachage attach\'ee au bloc que l'on est en train de typer. Lorsque l'on rentre dans un bloc, on cr\'ee un nouveau contexte en copiant le contexte actuel avant d'introduire les variables d\'eclar\'ees dans ce bloc. Ce fonctionnement est malheureusement quadratique, il aurait \'et\'e, plus efficace de travailler avec une seule table et d'ajouter et de retirer les variables au fur et \`a mesure.
+
+\section{Production de code RTL}
+
+La production de code RTL est la premi\`ere \'etape pour transformer l'arbre issu du typage en code interpr\'etable par une machine. Il s'agit de formaliser les op\'erations d\'ecrite dans l'arbre de typage et de mettre en forme les diff\'erents registres (dont on suppose posseder un nombre infini) dans lesquels on stocke les diff\'erentes valeurs et contenu des variables du programmes. La production du code RTL est aussi l'occasion de d'appliquer un certain nombre d'op\'eration appel\'es \emph{selection d'instruction}. Notre selection d'instruction s'applique de la fa\c con suivante :
+
+\begin{itemize}
+\item Une op\'eration binaire ou unaire pouvant \^etre calcul\'ee tout de suite, est replac\'ee par une constante \'egale au r\'esultat
+
+\item un certain nombre d'op\'eration demandant une \'evaluation paresseuse sont optimis\'ee en prenant en compte leur caract\`ere paresseux. De plus, dans le cas d'une expression comme $e_1 || 1$, celle-ci est remplac\'ee par la constante $1$ si et seulement si l'expression $e_1$ est une expression pure (cette id\'ee est appliqu\'ee lorsque l'on divise $0$ par une expression, ou lorsque l'on multiplie par $0$.)
+
+\item On transforme en op\'eration unaire les additions et soustractions de la forme $e_1 \mp c$ ou $c \mp e_1$, et de la m\^eme fa\c con on transforme en condition de saut unaire les instruction de la forme $if(e)...$.
+
+\item On applique la selection d'instruction sur les conditions de sorte \`a couper l'une des composante d'une condition si le test est toujours positif pour autant que l'on puisse le savoir \`a ce moment de la compilation.
+\end{itemize}
+
+

@@ -101,4 +101,17 @@ Coloration finale :
 \#4 & \%rbx \\
 \#5 & \%r12 \\
 \end{tabular}
+\subsection{Production de code lin\'earis\'e}
 
+Une fois l'allocation de registre et la production de code LTL, il reste \`a le traduire en assembleur et \`a le lin\'eariser. Nous avons utilis\'e la methode pr\'econis\'ee dans le cours. Plusieurs points sont cependant \`a expliciter :
+
+\begin{itemize}
+
+\item Il faut transformer les op\'eration $sete$ et $setne$ correctement, car ces op\'erateur agissent sur des registres de taille octets, il s'agit donc de deplacer les valeurs des registres dans des registres octets, puis de deplacer le r\'esultat dans un registre 64-bit (on utilise pour ce faire la commande $movbzq$ de l'assembleur).
+
+\item Il faut supprimer autant d'\'etiquette inutile que possible, pour cela les \'etiquettes vers lesquels un saut sera fait (via $jmp$, $jne$, $jnz$, etc.) sont stock\'ees dans une table de hachage avant de filtrer le code produit en v\'erifiant si ces \'etiquettes sont n\'ecessaire dans le code final.
+
+\item On peut optimiser le nombre d'instruction de saut lors d'un saut conditionnel en v\'erifiant si l'\'etiquette vers laquelle on saute \`a d\'ej\`a \'et\'e trait\'e auquel cas on pr\'ef\`ereras inverser la condition et faire suivre le code l'\'etiquette n'ayant pas encore \'et\'e trait\'ee.
+
+\item Il faut rajouter l'instruction $cqto$ avant une division de sorte \`a \'eviter une \emph{floating point exception}.
+\end{itemize}
